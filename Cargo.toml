@@ -1,0 +1,12 @@
+[package]
+name = "protobuf"
+version = "0.1.0"
+authors = ["Pierre Guillaume Herveou <pgherveou@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+thiserror = "1.0"
+derive_more = { version = "0.99.0",  default-features = false, features =["display"] }
+
