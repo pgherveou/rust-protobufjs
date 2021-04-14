@@ -5,7 +5,7 @@ use crate::{
     namespace::Namespace,
     parse_error::{ParseError, ParseFileError},
     service::{MethodDefinition, Rpc, Service},
-    token::{StringDelimiter, StringWithDelimiter, Token},
+    token::Token,
     tokenizer::Tokenizer,
 };
 
@@ -75,7 +75,7 @@ impl<'a> Parser<'a> {
             return Err(ParseError::PackageAlreadySet);
         }
 
-        let name = self.read_unquoted_string()?;
+        let name = self.read_word()?;
         self.package = self.root.define(name.as_str()).as_ptr();
         self.expect_token(Token::SemiColon)?;
         Ok(())
@@ -95,15 +95,15 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_option(&mut self) -> Result<(), ParseError> {
-        self.read_unquoted_string()?;
+        self.read_word()?;
         self.expect_token(Token::Equal)?;
-        self.read_string()?;
+        self.read_word_or_string()?;
         self.expect_token(Token::SemiColon)?;
         Ok(())
     }
 
     fn parse_message(&mut self) -> Result<Message, ParseError> {
-        let message_name = self.read_unquoted_string()?;
+        let message_name = self.read_word()?;
         self.expect_token(Token::OpenCurlyBracket)?;
 
         let mut message = Message::new(message_name);
@@ -124,12 +124,11 @@ impl<'a> Parser<'a> {
                     self.parse_message_option()?;
                 }
                 Token::Repeated => {
-                    let type_name = self.read_unquoted_string()?;
+                    let type_name = self.read_word()?;
                     self.parse_message_field(&mut message, type_name, true)?;
                 }
-                Token::String(type_name) => {
-                    type_name.expect_delimiter(StringDelimiter::None)?;
-                    self.parse_message_field(&mut message, type_name.into(), false)?;
+                Token::Word(type_name) => {
+                    self.parse_message_field(&mut message, type_name, false)?;
                 }
                 token => return Err(ParseError::UnexpectedMessageToken(token)),
             }
@@ -139,7 +138,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_service(&mut self) -> Result<Service, ParseError> {
-        let name = self.read_unquoted_string()?;
+        let name = self.read_word()?;
         let mut service = Service::new(name);
 
         self.expect_token(Token::OpenCurlyBracket)?;
@@ -162,13 +161,13 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_rpc(&mut self) -> Result<Rpc, ParseError> {
-        let name = self.read_unquoted_string()?;
+        let name = self.read_word()?;
 
         self.expect_token(Token::OpenParenthesis)?;
 
         let request = match self.tokenizer.read_token()? {
-            Token::Stream => MethodDefinition::new(self.read_unquoted_string()?, true),
-            token => MethodDefinition::new(token.as_unquoted_string()?, false),
+            Token::Stream => MethodDefinition::new(self.read_word()?, true),
+            token => MethodDefinition::new(token.as_word()?, false),
         };
 
         self.expect_token(Token::CloseParenthesis)?;
@@ -176,8 +175,8 @@ impl<'a> Parser<'a> {
         self.expect_token(Token::OpenParenthesis)?;
 
         let response = match self.tokenizer.read_token()? {
-            Token::Stream => MethodDefinition::new(self.read_unquoted_string()?, true),
-            token => MethodDefinition::new(token.as_unquoted_string()?, false),
+            Token::Stream => MethodDefinition::new(self.read_word()?, true),
+            token => MethodDefinition::new(token.as_word()?, false),
         };
 
         self.expect_token(Token::CloseParenthesis)?;
@@ -193,10 +192,10 @@ impl<'a> Parser<'a> {
         type_name: String,
         repeated: bool,
     ) -> Result<(), ParseError> {
-        let field_name = self.read_unquoted_string()?;
+        let field_name = self.read_word()?;
         self.expect_token(Token::Equal)?;
         let field_id = self
-            .read_unquoted_string()?
+            .read_word()?
             .parse::<u32>()
             .map_err(|err| ParseError::ParseFieldId(err))?;
         message.add_field(field_name, Field::new(field_id, type_name, repeated));
@@ -214,23 +213,26 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn read_string(&mut self) -> Result<StringWithDelimiter, ParseError> {
+    fn read_word_or_string(&mut self) -> Result<String, ParseError> {
         match self.tokenizer.read_token()? {
-            Token::String(v) => Ok(v),
+            Token::QuotedString(v) => Ok(v),
+            Token::Word(v) => Ok(v),
             token => Err(ParseError::UnexpectedString(token)),
         }
     }
 
     fn read_quoted_string(&mut self) -> Result<String, ParseError> {
-        let str = self.read_string()?;
-        str.expect_delimiter(StringDelimiter::DoubleQuote)?;
-        Ok(str.into())
+        match self.tokenizer.read_token()? {
+            Token::QuotedString(v) => Ok(v),
+            token => Err(ParseError::UnexpectedString(token)),
+        }
     }
 
-    fn read_unquoted_string(&mut self) -> Result<String, ParseError> {
-        let str = self.read_string()?;
-        str.expect_delimiter(StringDelimiter::None)?;
-        Ok(str.into())
+    fn read_word(&mut self) -> Result<String, ParseError> {
+        match self.tokenizer.read_token()? {
+            Token::Word(v) => Ok(v),
+            token => Err(ParseError::UnexpectedString(token)),
+        }
     }
 
     fn expect_token(&mut self, expected: Token) -> Result<(), ParseError> {

@@ -1,9 +1,5 @@
+use crate::{position::Position, token::Token};
 use std::{fmt::Display, num::ParseIntError};
-
-use crate::{
-    position::Position,
-    token::{StringDelimiter, Token},
-};
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
@@ -30,9 +26,6 @@ pub enum ParseError {
 
     #[error("unexpected message token: {0}")]
     UnexpectedMessageToken(Token),
-
-    #[error("unexpected {0}")]
-    UnexpectedStringDelimiter(StringDelimiter),
 
     #[error("unexpected string: {0}")]
     UnexpectedString(Token),

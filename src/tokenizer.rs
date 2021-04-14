@@ -3,8 +3,7 @@ use std::vec::IntoIter;
 use crate::iterator_with_position::IteratorWithPosition;
 use crate::parse_error::TokenError;
 use crate::position::Position;
-use crate::token::{StringDelimiter, StringWithDelimiter, Token};
-use std::convert::TryFrom;
+use crate::token::Token;
 
 pub struct Tokenizer {
     chars: IteratorWithPosition<IntoIter<char>>,
@@ -30,19 +29,14 @@ impl Tokenizer {
 
     pub fn skip_until_token(&mut self, token: Token) -> Result<(), TokenError> {
         loop {
-            match self.next() {
-                Some(t) if t == token => return Ok(()),
-                Some(_) => {}
-                None => return Err(TokenError::EOF),
+            if self.read_token()? == token {
+                return Ok(());
             }
         }
     }
 
     pub fn read_token(&mut self) -> Result<Token, TokenError> {
-        match self.next() {
-            Some(t) => Ok(t),
-            None => Err(TokenError::EOF),
-        }
+        self.next().ok_or(TokenError::EOF)
     }
 
     fn read_quoted_string(&mut self, delimiter: char) -> Result<String, TokenError> {
@@ -111,7 +105,7 @@ impl Tokenizer {
             "repeated" => Token::Repeated,
             "message" => Token::Message,
             "syntax" => Token::Syntax,
-            _ => Token::String(StringWithDelimiter::new(word, StringDelimiter::None)),
+            _ => Token::Word(word),
         }
     }
 
@@ -193,8 +187,7 @@ impl Iterator for Tokenizer {
             // string
             Some(c @ '\'') | Some(c @ '"') => match self.read_quoted_string(c) {
                 Ok(str) => {
-                    let delimiter = StringDelimiter::try_from(c).unwrap();
-                    return Some(Token::String(StringWithDelimiter::new(str, delimiter)));
+                    return Some(Token::QuotedString(str));
                 }
                 Err(err) => Some(Token::Error(err)),
             },
@@ -207,32 +200,28 @@ impl Iterator for Tokenizer {
 
 #[cfg(test)]
 mod tests {
-    use crate::token::StringWithDelimiter;
     use crate::token::Token;
     use crate::tokenizer::Tokenizer;
 
     #[test]
-    fn playground() {}
-
-    #[test]
-    fn it_should_parse_double_quote_string() {
+    fn it_should_parse_single_quote_string() {
         let mut tokenizer = Tokenizer::new("'hello world'");
 
         assert_eq!(
             tokenizer.next(),
-            Some(Token::String(StringWithDelimiter::from("hello world")))
+            Some(Token::QuotedString("hello world".to_string()))
         );
 
         assert_eq!(tokenizer.next(), None);
     }
 
     #[test]
-    fn it_should_parse_single_quote_string() {
+    fn it_should_parse_double_quote_string() {
         let mut tokenizer = Tokenizer::new(r#""hello world""#);
 
         assert_eq!(
             tokenizer.next(),
-            Some(Token::String(StringWithDelimiter::from("hello world")))
+            Some(Token::Word("hello world".to_string()))
         );
 
         assert_eq!(tokenizer.next(), None);
@@ -244,7 +233,7 @@ mod tests {
 
         assert_eq!(
             tokenizer.next(),
-            Some(Token::String(StringWithDelimiter::from("hello ' \n world")))
+            Some(Token::QuotedString("hello ' \n world".to_string()))
         );
 
         assert_eq!(tokenizer.next(), None);
@@ -252,55 +241,15 @@ mod tests {
 
     #[test]
     fn it_should_parse_double_slash_comment() {
-        let mut tokenizer = Tokenizer::new("// hello world\n");
-
-        println!("{:?}", tokenizer.next())
+        let mut tokenizer = Tokenizer::new("// hello world");
+        tokenizer.next();
+        assert_eq!(tokenizer.comment, Some(" hello world".to_string()));
     }
 
     #[test]
     fn it_should_parse_slash_star_comment() {
-        let mut tokenizer = Tokenizer::new("/* hello world */ // foo");
-
-        println!("{:?}", tokenizer.next());
-    }
-
-    #[test]
-    fn it_should_tokenize_sample_file() {
-        let src = r#"
-syntax = "proto3";
-
-import "pb/ext/http/ext.proto";
-
-package pb.hello;
-
-option go_package = "hello";
-
-message HelloRequest {    
-    option (http.proxy_options).generate_legacy_proxies = true;
-
-    message HelloRequestInner {
-        message HelloRequestInnerInner {
-            string inner = 1;
-        };
-        string inner = 1;
-    };
-
-    HelloRequestInner foo = 10;
-
-    // The phone number of the device
-    string phone_number = 2;
-}
-
-message HelloResponse {
-    option (http.proxy_options).generate_legacy_proxies = true;
-}
-"#;
-
-        let mut tokenizer = Tokenizer::new(src);
-
-        println!("Start tokenizer");
-        while let Some(token) = tokenizer.next() {
-            println!("{:?}", token)
-        }
+        let mut tokenizer = Tokenizer::new("/* hello world */");
+        tokenizer.next();
+        assert_eq!(tokenizer.comment, Some(" hello world ".to_string()));
     }
 }
