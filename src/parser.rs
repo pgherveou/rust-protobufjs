@@ -1,7 +1,7 @@
 use std::ptr::NonNull;
 
 use crate::{
-    message::{Field, Message},
+    message::{Enum, Field, Message, Oneof},
     namespace::Namespace,
     parse_error::{ParseError, ParseFileError},
     service::{MethodDefinition, Rpc, Service},
@@ -55,6 +55,10 @@ impl<'a> Parser<'a> {
                     let message = self.parse_message()?;
                     self.package_mut()?.add_message(message);
                 }
+                Token::Enum => {
+                    let e = self.parse_enum()?;
+                    self.package_mut()?.add_enum(e);
+                }
                 Token::Error(err) => return Err(ParseError::TokenError(err)),
                 token => return Err(ParseError::UnexpectedTopLevelToken(token)),
             }
@@ -107,15 +111,25 @@ impl<'a> Parser<'a> {
         self.expect_token(Token::OpenCurlyBracket)?;
 
         let mut message = Message::new(message_name);
+        let mut oneof = None;
 
         loop {
             match self.tokenizer.read_token()? {
-                Token::CloseCurlyBracket => {
-                    break;
-                }
+                Token::CloseCurlyBracket => match oneof.take() {
+                    Some(oneof) => message.add_oneof(oneof),
+                    None => break,
+                },
                 Token::Message => {
                     message.add_nested(self.parse_message()?);
                     self.expect_token(Token::SemiColon)?;
+                }
+                Token::Oneof => {
+                    let name = self.read_word()?;
+                    oneof = Some(Oneof::new(name));
+                    self.expect_token(Token::OpenCurlyBracket)?;
+                }
+                Token::Enum => {
+                    message.add_enum(self.parse_enum()?);
                 }
                 Token::Reserved => {
                     self.parse_reserved()?;
@@ -125,10 +139,24 @@ impl<'a> Parser<'a> {
                 }
                 Token::Repeated => {
                     let type_name = self.read_word()?;
-                    self.parse_message_field(&mut message, type_name, true)?;
+                    message.add_field(self.parse_message_field(type_name, true, None)?);
+                }
+                Token::Map => {
+                    self.expect_token(Token::OpenAngularBracket)?;
+                    let key_type = self.read_word()?;
+                    self.expect_token(Token::Comma)?;
+                    let type_name = self.read_word()?;
+                    self.expect_token(Token::CloseAngularBracket)?;
+                    message.add_field(self.parse_message_field(type_name, true, Some(key_type))?);
                 }
                 Token::Word(type_name) => {
-                    self.parse_message_field(&mut message, type_name, false)?;
+                    let field = self.parse_message_field(type_name, false, None)?;
+                    match oneof {
+                        Some(ref mut oneof) => oneof.add_field_name(field.name.as_str()),
+                        None => {}
+                    }
+
+                    message.add_field(field);
                 }
                 token => return Err(ParseError::UnexpectedMessageToken(token)),
             }
@@ -188,19 +216,50 @@ impl<'a> Parser<'a> {
 
     fn parse_message_field(
         &mut self,
-        message: &mut Message,
         type_name: String,
         repeated: bool,
-    ) -> Result<(), ParseError> {
+        key_type: Option<String>,
+    ) -> Result<Field, ParseError> {
         let field_name = self.read_word()?;
         self.expect_token(Token::Equal)?;
         let field_id = self
             .read_word()?
             .parse::<u32>()
             .map_err(|err| ParseError::ParseFieldId(err))?;
-        message.add_field(field_name, Field::new(field_id, type_name, repeated));
-        self.expect_token(Token::SemiColon)?;
-        Ok(())
+
+        match self.tokenizer.read_token()? {
+            Token::SemiColon => {}
+            Token::OpenBracket => {
+                self.tokenizer.skip_until_token(Token::CloseBracket)?;
+                self.expect_token(Token::SemiColon)?;
+            }
+            token => return Err(ParseError::UnexpectedToken(token)),
+        }
+
+        Ok(Field::new(
+            field_id, field_name, type_name, repeated, key_type,
+        ))
+    }
+
+    fn parse_enum(&mut self) -> Result<Enum, ParseError> {
+        let mut e = Enum::new(self.read_word()?);
+        self.expect_token(Token::OpenCurlyBracket)?;
+
+        loop {
+            match self.tokenizer.read_token()? {
+                Token::CloseCurlyBracket => return Ok(e),
+                Token::Word(key) => {
+                    self.expect_token(Token::Equal)?;
+                    let value = self
+                        .read_word()?
+                        .parse::<u32>()
+                        .map_err(|err| ParseError::ParseEnumValue(err))?; // self.expect_token(Token::Word())?;
+                    self.expect_token(Token::SemiColon)?;
+                    e.add(key, value);
+                }
+                token => return Err(ParseError::UnexpectedToken(token)),
+            }
+        }
     }
 
     fn parse_message_option(&mut self) -> Result<(), ParseError> {
@@ -236,11 +295,11 @@ impl<'a> Parser<'a> {
     }
 
     fn expect_token(&mut self, expected: Token) -> Result<(), ParseError> {
-        let received = self.tokenizer.read_token()?;
-        if received == expected {
+        let token = self.tokenizer.read_token()?;
+        if token == expected {
             return Ok(());
         }
-        Err(ParseError::UnexpectedToken { expected, received })
+        Err(ParseError::UnexpectedToken(token))
     }
 
     pub fn print(&self) {
@@ -254,38 +313,10 @@ mod tests {
 
     #[test]
     fn it_should_parse_sample_file() {
-        let src = r#"
-syntax = "proto3";
-
-package pb.hello;
-
-option go_package = "hello";
-option java_package = "com.hello.service.api.v1";
-option java_multiple_files = true;
-option py_generic_services = true;
-
-service HelloWorld {
-    rpc SayHello (SayHelloRequest) returns (SayHelloResponse) {}
-    rpc LotsOfReplies(SayHelloRequest) returns (stream SayHelloResponse) {}
-    rpc LotsOfGreetings(stream SayHelloRequest) returns (SayHelloResponses) {}
-    rpc BidiHello(stream SayHelloRequest) returns (stream SayHelloResponse) {}
-}
-
-message SayHelloRequest {
-    string name = 1;
-    string phone = 2;
-}
-
-message SayHelloResponse {
-    string hello = 1;
-}
-
-message SayHelloResponses {
-    repeated SayHelloResponse responses = 1;
-}
-"#;
-
-        let mut parser = Parser::new("test_file.proto", src);
+        let content =
+            std::fs::read_to_string("/Users/pgherveou/src/idl/protos/pb/lyft/users/users.proto")
+                .unwrap();
+        let mut parser = Parser::new("test_file.proto", content.as_str());
 
         match parser.parse() {
             Ok(_) => println!("result {:?}", parser.root),

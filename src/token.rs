@@ -21,8 +21,22 @@ pub enum Token {
     #[display(fmt = ")")]
     CloseParenthesis,
 
-    Returns,
+    #[display(fmt = "[")]
+    OpenBracket,
 
+    #[display(fmt = "]")]
+    CloseBracket,
+
+    #[display(fmt = "<")]
+    OpenAngularBracket,
+
+    #[display(fmt = ">")]
+    CloseAngularBracket,
+
+    #[display(fmt = ",")]
+    Comma,
+
+    Returns,
     Syntax,
     Import,
     Option,
@@ -30,9 +44,12 @@ pub enum Token {
     Rpc,
     Stream,
     Repeated,
+    Map,
     Package,
     Message,
+    Enum,
     Reserved,
+    Oneof,
 
     #[display(fmt = "\"{}\"", _0)]
     QuotedString(String),
@@ -57,6 +74,12 @@ impl Token {
             Token::QuotedString(v) => Ok(v),
             token => Err(ParseError::UnexpectedString(token)),
         }
+    }
+}
+
+impl From<char> for Token {
+    fn from(_: char) -> Self {
+        todo!()
     }
 }
 

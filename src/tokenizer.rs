@@ -7,7 +7,6 @@ use crate::token::Token;
 
 pub struct Tokenizer {
     chars: IteratorWithPosition<IntoIter<char>>,
-    stack: Vec<Token>,
     comment: Option<String>,
 }
 
@@ -18,7 +17,6 @@ impl Tokenizer {
 
         Self {
             chars,
-            stack: Vec::new(),
             comment: None,
         }
     }
@@ -103,8 +101,11 @@ impl Tokenizer {
             "rpc" => Token::Rpc,
             "stream" => Token::Stream,
             "repeated" => Token::Repeated,
+            "map" => Token::Map,
             "message" => Token::Message,
             "syntax" => Token::Syntax,
+            "oneof" => Token::Oneof,
+            "enum" => Token::Enum,
             _ => Token::Word(word),
         }
     }
@@ -152,10 +153,6 @@ impl Iterator for Tokenizer {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(token) = self.stack.pop() {
-            return Some(token);
-        }
-
         match self.chars.next() {
             None => None,
 
@@ -165,6 +162,11 @@ impl Iterator for Tokenizer {
             Some('}') => Some(Token::CloseCurlyBracket),
             Some('(') => Some(Token::OpenParenthesis),
             Some(')') => Some(Token::CloseParenthesis),
+            Some('[') => Some(Token::OpenBracket),
+            Some(']') => Some(Token::CloseBracket),
+            Some('<') => Some(Token::OpenAngularBracket),
+            Some('>') => Some(Token::CloseAngularBracket),
+            Some(',') => Some(Token::Comma),
 
             // whitespaces
             Some(' ') | Some('\t') => self.next(),

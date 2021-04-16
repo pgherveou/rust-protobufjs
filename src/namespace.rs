@@ -1,6 +1,9 @@
 use std::{collections::HashMap, ptr::NonNull};
 
-use crate::{message::Message, service::Service};
+use crate::{
+    message::{Enum, Message},
+    service::Service,
+};
 
 #[derive(Debug)]
 pub struct Namespace {
@@ -8,6 +11,7 @@ pub struct Namespace {
     parent: Option<NonNull<Namespace>>,
     nested: HashMap<String, Box<Namespace>>,
     messages: Vec<Message>,
+    enums: Vec<Enum>,
     services: Vec<Service>,
 }
 
@@ -17,6 +21,7 @@ impl Namespace {
             fullname: fullname.to_string(),
             nested: HashMap::new(),
             messages: Vec::new(),
+            enums: Vec::new(),
             services: Vec::new(),
             parent,
         })
@@ -32,6 +37,10 @@ impl Namespace {
 
     pub fn add_message(&mut self, message: Message) {
         self.messages.push(message);
+    }
+
+    pub fn add_enum(&mut self, e: Enum) {
+        self.enums.push(e);
     }
 
     pub fn add_service(&mut self, service: Service) {

@@ -30,11 +30,14 @@ pub enum ParseError {
     #[error("unexpected string: {0}")]
     UnexpectedString(Token),
 
-    #[error("unexpected token: received \"{received}\", expected \"{expected}\"")]
-    UnexpectedToken { expected: Token, received: Token },
+    #[error("unexpected token: \"{0}\"")]
+    UnexpectedToken(Token),
 
     #[error("failed to parse field id: {0}")]
     ParseFieldId(ParseIntError),
+
+    #[error("failed to parse enum value: {0}")]
+    ParseEnumValue(ParseIntError),
 
     #[error("{0}")]
     TokenError(TokenError),
@@ -58,7 +61,7 @@ impl<'a> Display for ParseFileError<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let line_number = self.position.line;
         let line_number_width = line_number.to_string().len();
-        let show_lines = 3;
+        let show_lines = std::cmp::min(self.position.line, 3);
 
         let lines = self
             .content
@@ -69,7 +72,7 @@ impl<'a> Display for ParseFileError<'a> {
             .map(|(i, v)| {
                 format!(
                     "{:line$} | {}",
-                    line_number - (show_lines - i),
+                    line_number - (show_lines - i - 1),
                     v,
                     line = line_number_width
                 )
