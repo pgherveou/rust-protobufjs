@@ -1,73 +1,44 @@
-#[derive(Debug)]
+use std::collections::HashMap;
+
+use serde::Serialize;
+
+#[derive(Debug, Serialize)]
 pub struct Message {
-    pub name: String,
-    oneofs: Vec<Oneof>,
-    fields: Vec<Field>,
-    nested: Vec<Message>,
-    enums: Vec<Enum>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    oneofs: HashMap<String, Vec<String>>,
+
+    fields: HashMap<String, Field>,
+
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    nested: HashMap<String, Message>,
+
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    enums: HashMap<String, Vec<EnumTuple>>,
 }
 
-#[derive(Debug)]
-pub struct EnumTuple(String, u32);
+#[derive(Debug, Serialize)]
+pub struct EnumTuple(pub String, pub u32);
 
-#[derive(Debug)]
-pub struct Enum {
-    name: String,
-    values: Vec<EnumTuple>,
+fn is_false(value: &bool) -> bool {
+    *value == false
 }
 
-impl Enum {
-    pub fn new(name: String) -> Self {
-        Self {
-            name,
-            values: Vec::new(),
-        }
-    }
-
-    pub fn add(&mut self, key: String, value: u32) {
-        self.values.push(EnumTuple(key, value));
-    }
-}
-
-#[derive(Debug)]
-pub struct Oneof {
-    name: String,
-    field_names: Vec<String>,
-}
-
-impl Oneof {
-    pub fn new(name: String) -> Self {
-        Self {
-            name,
-            field_names: Vec::new(),
-        }
-    }
-
-    pub fn add_field_name(&mut self, name: &str) {
-        self.field_names.push(name.to_string());
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Field {
     pub id: u32,
-    pub name: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_type: Option<String>,
     pub type_name: String,
+
+    #[serde(skip_serializing_if = "is_false")]
     pub repeated: bool,
 }
 
 impl Field {
-    pub fn new(
-        id: u32,
-        name: String,
-        type_name: String,
-        repeated: bool,
-        key_type: Option<String>,
-    ) -> Field {
+    pub fn new(id: u32, type_name: String, repeated: bool, key_type: Option<String>) -> Field {
         Self {
             id,
-            name,
             type_name,
             repeated,
             key_type,
@@ -75,30 +46,43 @@ impl Field {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct Oneof(pub String, pub Vec<String>);
+
+impl Oneof {
+    pub fn new(name: String) -> Self {
+        Oneof(name, Vec::new())
+    }
+
+    pub fn add_field_name(&mut self, value: String) {
+        self.1.push(value);
+    }
+}
+
 impl Message {
-    pub fn new(name: String) -> Message {
+    pub fn new() -> Message {
         Self {
-            name,
-            fields: Vec::new(),
-            nested: Vec::new(),
-            oneofs: Vec::new(),
-            enums: Vec::new(),
+            fields: HashMap::new(),
+            nested: HashMap::new(),
+            oneofs: HashMap::new(),
+            enums: HashMap::new(),
         }
     }
 
     pub fn add_oneof(&mut self, oneof: Oneof) {
-        self.oneofs.push(oneof);
+        let Oneof(name, value) = oneof;
+        self.oneofs.insert(name, value);
     }
 
-    pub fn add_enum(&mut self, e: Enum) {
-        self.enums.push(e);
+    pub fn add_enum(&mut self, name: String, enum_tuples: Vec<EnumTuple>) {
+        self.enums.insert(name, enum_tuples);
     }
 
-    pub fn add_field(&mut self, field: Field) {
-        self.fields.push(field);
+    pub fn add_field(&mut self, name: String, field: Field) {
+        self.fields.insert(name, field);
     }
 
-    pub fn add_nested(&mut self, message: Message) {
-        self.nested.push(message);
+    pub fn add_nested(&mut self, name: String, message: Message) {
+        self.nested.insert(name, message);
     }
 }

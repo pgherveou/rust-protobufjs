@@ -1,18 +1,64 @@
+use serde::{ser::SerializeStruct, Serialize, Serializer};
 use std::{collections::HashMap, ptr::NonNull};
 
 use crate::{
-    message::{Enum, Message},
+    message::{EnumTuple, Message},
     service::Service,
 };
 
-#[derive(Debug)]
+// pub fn ser_with<S>(id: &String, s: S) -> Result<S::Ok, S::Error>
+// where
+//     S: Serializer,
+// {
+//     let mut ser = s.serialize_map(Some(1))?;
+//     ser.serialize_entry("$oid", &id)?;
+//     ser.end()
+// }
+
+#[derive(Serialize, Debug)]
+#[serde(remote = "Self")]
 pub struct Namespace {
+    #[serde(skip_serializing, skip_deserializing)]
     pub fullname: String,
+
+    #[serde(skip_serializing, skip_deserializing)]
     parent: Option<NonNull<Namespace>>,
+
+    #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
     nested: HashMap<String, Box<Namespace>>,
-    messages: Vec<Message>,
-    enums: Vec<Enum>,
-    services: Vec<Service>,
+
+    #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
+    services: HashMap<String, Service>,
+
+    #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
+    messages: HashMap<String, Message>,
+
+    #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
+    enums: HashMap<String, Vec<EnumTuple>>,
+}
+
+impl Serialize for Namespace {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        struct Wrapper<'a> {
+            root: &'a Namespace,
+        }
+
+        impl<'a> Serialize for Wrapper<'a> {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                Namespace::serialize(&self.root, serializer)
+            }
+        }
+
+        let mut state = serializer.serialize_struct("Wrapper", 1)?;
+        state.serialize_field("nested", &Wrapper { root: self })?;
+        state.end()
+    }
 }
 
 impl Namespace {
@@ -20,9 +66,9 @@ impl Namespace {
         Box::new(Self {
             fullname: fullname.to_string(),
             nested: HashMap::new(),
-            messages: Vec::new(),
-            enums: Vec::new(),
-            services: Vec::new(),
+            messages: HashMap::new(),
+            enums: HashMap::new(),
+            services: HashMap::new(),
             parent,
         })
     }
@@ -35,16 +81,16 @@ impl Namespace {
         NonNull::new(self)
     }
 
-    pub fn add_message(&mut self, message: Message) {
-        self.messages.push(message);
+    pub fn add_message(&mut self, name: String, message: Message) {
+        self.messages.insert(name, message);
     }
 
-    pub fn add_enum(&mut self, e: Enum) {
-        self.enums.push(e);
+    pub fn add_enum(&mut self, name: String, enum_tuples: Vec<EnumTuple>) {
+        self.enums.insert(name, enum_tuples);
     }
 
     pub fn add_service(&mut self, service: Service) {
-        self.services.push(service);
+        self.services.insert(service.name.to_string(), service);
     }
 
     fn or_insert_with_child(&mut self, name: &str, fullname: &str) -> &mut Box<Namespace> {

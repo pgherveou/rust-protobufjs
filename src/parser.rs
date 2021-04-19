@@ -1,10 +1,10 @@
 use std::ptr::NonNull;
 
 use crate::{
-    message::{Enum, Field, Message, Oneof},
+    message::{EnumTuple, Field, Message, Oneof},
     namespace::Namespace,
     parse_error::{ParseError, ParseFileError},
-    service::{MethodDefinition, Rpc, Service},
+    service::{Rpc, Service},
     token::Token,
     tokenizer::Tokenizer,
 };
@@ -13,7 +13,7 @@ pub struct Parser<'a> {
     file_name: &'a str,
     content: &'a str,
     tokenizer: Tokenizer,
-    root: Box<Namespace>,
+    pub root: Box<Namespace>,
     package: Option<NonNull<Namespace>>,
 }
 
@@ -52,12 +52,12 @@ impl<'a> Parser<'a> {
                     self.package_mut()?.add_service(service);
                 }
                 Token::Message => {
-                    let message = self.parse_message()?;
-                    self.package_mut()?.add_message(message);
+                    let (name, message) = self.parse_message()?;
+                    self.package_mut()?.add_message(name, message);
                 }
                 Token::Enum => {
-                    let e = self.parse_enum()?;
-                    self.package_mut()?.add_enum(e);
+                    let (name, enum_tuples) = self.parse_enum()?;
+                    self.package_mut()?.add_enum(name, enum_tuples);
                 }
                 Token::Error(err) => return Err(ParseError::TokenError(err)),
                 token => return Err(ParseError::UnexpectedTopLevelToken(token)),
@@ -106,11 +106,11 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn parse_message(&mut self) -> Result<Message, ParseError> {
+    fn parse_message(&mut self) -> Result<(String, Message), ParseError> {
         let message_name = self.read_word()?;
         self.expect_token(Token::OpenCurlyBracket)?;
 
-        let mut message = Message::new(message_name);
+        let mut message = Message::new();
         let mut oneof = None;
 
         loop {
@@ -120,7 +120,8 @@ impl<'a> Parser<'a> {
                     None => break,
                 },
                 Token::Message => {
-                    message.add_nested(self.parse_message()?);
+                    let (name, nested_message) = self.parse_message()?;
+                    message.add_nested(name, nested_message);
                     self.expect_token(Token::SemiColon)?;
                 }
                 Token::Oneof => {
@@ -129,7 +130,8 @@ impl<'a> Parser<'a> {
                     self.expect_token(Token::OpenCurlyBracket)?;
                 }
                 Token::Enum => {
-                    message.add_enum(self.parse_enum()?);
+                    let (name, enum_tuples) = self.parse_enum()?;
+                    message.add_enum(name, enum_tuples);
                 }
                 Token::Reserved => {
                     self.parse_reserved()?;
@@ -139,7 +141,8 @@ impl<'a> Parser<'a> {
                 }
                 Token::Repeated => {
                     let type_name = self.read_word()?;
-                    message.add_field(self.parse_message_field(type_name, true, None)?);
+                    let (name, field) = self.parse_message_field(type_name, true, None)?;
+                    message.add_field(name, field);
                 }
                 Token::Map => {
                     self.expect_token(Token::OpenAngularBracket)?;
@@ -147,22 +150,24 @@ impl<'a> Parser<'a> {
                     self.expect_token(Token::Comma)?;
                     let type_name = self.read_word()?;
                     self.expect_token(Token::CloseAngularBracket)?;
-                    message.add_field(self.parse_message_field(type_name, true, Some(key_type))?);
+                    let (name, field) =
+                        self.parse_message_field(type_name, true, Some(key_type))?;
+                    message.add_field(name, field);
                 }
                 Token::Word(type_name) => {
-                    let field = self.parse_message_field(type_name, false, None)?;
+                    let (name, field) = self.parse_message_field(type_name, false, None)?;
                     match oneof {
-                        Some(ref mut oneof) => oneof.add_field_name(field.name.as_str()),
+                        Some(ref mut oneof) => oneof.add_field_name(name.to_string()),
                         None => {}
                     }
 
-                    message.add_field(field);
+                    message.add_field(name, field);
                 }
                 token => return Err(ParseError::UnexpectedMessageToken(token)),
             }
         }
 
-        Ok(message)
+        Ok((message_name, message))
     }
 
     fn parse_service(&mut self) -> Result<Service, ParseError> {
@@ -193,25 +198,31 @@ impl<'a> Parser<'a> {
 
         self.expect_token(Token::OpenParenthesis)?;
 
-        let request = match self.tokenizer.read_token()? {
-            Token::Stream => MethodDefinition::new(self.read_word()?, true),
-            token => MethodDefinition::new(token.as_word()?, false),
+        let (request_type, request_stream) = match self.tokenizer.read_token()? {
+            Token::Stream => (self.read_word()?, true),
+            token => (token.as_word()?, false),
         };
 
         self.expect_token(Token::CloseParenthesis)?;
         self.expect_token(Token::Returns)?;
         self.expect_token(Token::OpenParenthesis)?;
 
-        let response = match self.tokenizer.read_token()? {
-            Token::Stream => MethodDefinition::new(self.read_word()?, true),
-            token => MethodDefinition::new(token.as_word()?, false),
+        let (response_type, response_stream) = match self.tokenizer.read_token()? {
+            Token::Stream => (self.read_word()?, true),
+            token => (token.as_word()?, false),
         };
 
         self.expect_token(Token::CloseParenthesis)?;
         self.expect_token(Token::OpenCurlyBracket)?;
         self.tokenizer.skip_until_token(Token::CloseCurlyBracket)?;
 
-        Ok(Rpc::new(name, request, response))
+        Ok(Rpc::new(
+            name,
+            request_type,
+            request_stream,
+            response_type,
+            response_stream,
+        ))
     }
 
     fn parse_message_field(
@@ -219,7 +230,7 @@ impl<'a> Parser<'a> {
         type_name: String,
         repeated: bool,
         key_type: Option<String>,
-    ) -> Result<Field, ParseError> {
+    ) -> Result<(String, Field), ParseError> {
         let field_name = self.read_word()?;
         self.expect_token(Token::Equal)?;
         let field_id = self
@@ -236,18 +247,20 @@ impl<'a> Parser<'a> {
             token => return Err(ParseError::UnexpectedToken(token)),
         }
 
-        Ok(Field::new(
-            field_id, field_name, type_name, repeated, key_type,
+        Ok((
+            field_name,
+            Field::new(field_id, type_name, repeated, key_type),
         ))
     }
 
-    fn parse_enum(&mut self) -> Result<Enum, ParseError> {
-        let mut e = Enum::new(self.read_word()?);
+    fn parse_enum(&mut self) -> Result<(String, Vec<EnumTuple>), ParseError> {
+        let enum_name = self.read_word()?;
+        let mut enum_values = Vec::new();
         self.expect_token(Token::OpenCurlyBracket)?;
 
         loop {
             match self.tokenizer.read_token()? {
-                Token::CloseCurlyBracket => return Ok(e),
+                Token::CloseCurlyBracket => return Ok((enum_name, enum_values)),
                 Token::Word(key) => {
                     self.expect_token(Token::Equal)?;
                     let value = self
@@ -255,7 +268,7 @@ impl<'a> Parser<'a> {
                         .parse::<u32>()
                         .map_err(|err| ParseError::ParseEnumValue(err))?; // self.expect_token(Token::Word())?;
                     self.expect_token(Token::SemiColon)?;
-                    e.add(key, value);
+                    enum_values.push(EnumTuple(key, value));
                 }
                 token => return Err(ParseError::UnexpectedToken(token)),
             }
@@ -308,19 +321,4 @@ impl<'a> Parser<'a> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::Parser;
-
-    #[test]
-    fn it_should_parse_sample_file() {
-        let content =
-            std::fs::read_to_string("/Users/pgherveou/src/idl/protos/pb/lyft/users/users.proto")
-                .unwrap();
-        let mut parser = Parser::new("test_file.proto", content.as_str());
-
-        match parser.parse() {
-            Ok(_) => println!("result {:?}", parser.root),
-            Err(err) => println!("error:\n{}", err),
-        }
-    }
-}
+mod tests {}
