@@ -1,8 +1,11 @@
-use crate::parse_error::{ParseError, TokenError};
+use crate::parse_error::ParseError;
 use derive_more::Display;
 
 #[derive(Display, Debug, PartialEq)]
 pub enum Token {
+    #[display(fmt = "EOF")]
+    EOF,
+
     #[display(fmt = "=")]
     Equal,
 
@@ -39,6 +42,7 @@ pub enum Token {
     Returns,
     Syntax,
     Import,
+    Public,
     Option,
     Service,
     Rpc,
@@ -46,7 +50,9 @@ pub enum Token {
     Repeated,
     Map,
     Package,
+    Optional,
     Message,
+    Extend,
     Enum,
     Reserved,
     Oneof,
@@ -56,15 +62,27 @@ pub enum Token {
 
     #[display(fmt = "{}", _0)]
     Word(String),
-
-    #[display(fmt = "{}", _0)]
-    Error(TokenError),
 }
 
 impl Token {
     pub fn as_word(self) -> Result<String, ParseError> {
         match self {
             Token::Word(v) => Ok(v),
+            // Token::Import => Ok("import".to_string()),
+            Token::Package => Ok("package".to_string()),
+            Token::Reserved => Ok("reserved".to_string()),
+            Token::Option => Ok("option".to_string()),
+            Token::Service => Ok("service".to_string()),
+            Token::Public => Ok("public".to_string()),
+            Token::Enum => Ok("enum".to_string()),
+            // Token::Rpc => Ok("rpc".to_string()),
+            // Token::Stream => Ok("stream".to_string()),
+            // Token::Repeated => Ok("repeated".to_string()),
+            Token::Map => Ok("map".to_string()),
+            Token::Message => Ok("message".to_string()),
+            Token::Syntax => Ok("syntax".to_string()),
+            // Token::Oneof => Ok("oneof".to_string()),
+            // Token::Enum => Ok("enum".to_string()),
             token => Err(ParseError::UnexpectedString(token)),
         }
     }

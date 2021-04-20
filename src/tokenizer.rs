@@ -27,17 +27,13 @@ impl Tokenizer {
 
     pub fn skip_until_token(&mut self, token: Token) -> Result<(), TokenError> {
         loop {
-            if self.read_token()? == token {
+            if self.next()? == token {
                 return Ok(());
             }
         }
     }
 
-    pub fn read_token(&mut self) -> Result<Token, TokenError> {
-        self.next().ok_or(TokenError::EOF)
-    }
-
-    fn read_quoted_string(&mut self, delimiter: char) -> Result<String, TokenError> {
+    fn read_delimited_string(&mut self, end_delimiter: char) -> Result<String, TokenError> {
         let mut vec = Vec::new();
         let mut found_escape_char = false;
         let mut found_end_delimiter = false;
@@ -59,13 +55,15 @@ impl Tokenizer {
                 ('"', true) => push_and_reset!('\"'),
                 ('\'', true) => push_and_reset!('\''),
                 (c, true) => {
-                    return Err(TokenError::InvalidEscapeSequence(c));
+                    vec.push('\\');
+                    push_and_reset!(c)
                 }
                 ('\\', false) => {
+                    vec.push('\\');
                     found_escape_char = true;
                     continue;
                 }
-                (c, false) if c == delimiter => {
+                (c, false) if c == end_delimiter => {
                     found_end_delimiter = true;
                     break;
                 }
@@ -76,7 +74,7 @@ impl Tokenizer {
         if found_end_delimiter {
             Ok(vec.into_iter().collect())
         } else {
-            Err(TokenError::MissingEndDelimiter { delimiter })
+            Err(TokenError::MissingEndDelimiter(end_delimiter))
         }
     }
 
@@ -93,6 +91,7 @@ impl Tokenizer {
         let word = vec.into_iter().collect::<String>();
         match word.as_str() {
             "import" => Token::Import,
+            "public" => Token::Public,
             "package" => Token::Package,
             "reserved" => Token::Reserved,
             "option" => Token::Option,
@@ -103,6 +102,7 @@ impl Tokenizer {
             "repeated" => Token::Repeated,
             "map" => Token::Map,
             "message" => Token::Message,
+            "extend" => Token::Extend,
             "syntax" => Token::Syntax,
             "oneof" => Token::Oneof,
             "enum" => Token::Enum,
@@ -147,26 +147,22 @@ impl Tokenizer {
             found => return Err(TokenError::UnexpectedChar(found)),
         }
     }
-}
 
-impl Iterator for Tokenizer {
-    type Item = Token;
-
-    fn next(&mut self) -> Option<Self::Item> {
+    pub fn next(&mut self) -> Result<Token, TokenError> {
         match self.chars.next() {
-            None => None,
+            None => Ok(Token::EOF),
 
-            Some('=') => Some(Token::Equal),
-            Some(';') => Some(Token::SemiColon),
-            Some('{') => Some(Token::OpenCurlyBracket),
-            Some('}') => Some(Token::CloseCurlyBracket),
-            Some('(') => Some(Token::OpenParenthesis),
-            Some(')') => Some(Token::CloseParenthesis),
-            Some('[') => Some(Token::OpenBracket),
-            Some(']') => Some(Token::CloseBracket),
-            Some('<') => Some(Token::OpenAngularBracket),
-            Some('>') => Some(Token::CloseAngularBracket),
-            Some(',') => Some(Token::Comma),
+            Some('=') => Ok(Token::Equal),
+            Some(';') => Ok(Token::SemiColon),
+            Some('{') => Ok(Token::OpenCurlyBracket),
+            Some('}') => Ok(Token::CloseCurlyBracket),
+            Some('(') => Ok(Token::OpenParenthesis),
+            Some(')') => Ok(Token::CloseParenthesis),
+            Some('[') => Ok(Token::OpenBracket),
+            Some(']') => Ok(Token::CloseBracket),
+            Some('<') => Ok(Token::OpenAngularBracket),
+            Some('>') => Ok(Token::CloseAngularBracket),
+            Some(',') => Ok(Token::Comma),
 
             // whitespaces
             Some(' ') | Some('\t') => self.next(),
@@ -183,19 +179,19 @@ impl Iterator for Tokenizer {
                     self.comment = Some(comment);
                     self.next()
                 }
-                Err(err) => Some(Token::Error(err)),
+                Err(err) => Err(err),
             },
 
-            // string
-            Some(c @ '\'') | Some(c @ '"') => match self.read_quoted_string(c) {
+            // Quoted string
+            Some(c @ '\'') | Some(c @ '"') => match self.read_delimited_string(c) {
                 Ok(str) => {
-                    return Some(Token::QuotedString(str));
+                    return Ok(Token::QuotedString(str));
                 }
-                Err(err) => Some(Token::Error(err)),
+                Err(err) => Err(err),
             },
 
             // word
-            Some(c) => Some(self.read_word(c)),
+            Some(c) => Ok(self.read_word(c)),
         }
     }
 }
@@ -211,22 +207,15 @@ mod tests {
 
         assert_eq!(
             tokenizer.next(),
-            Some(Token::QuotedString("hello world".to_string()))
+            Ok(Token::QuotedString("hello world".to_string()))
         );
-
-        assert_eq!(tokenizer.next(), None);
     }
 
     #[test]
     fn it_should_parse_double_quote_string() {
         let mut tokenizer = Tokenizer::new(r#""hello world""#);
 
-        assert_eq!(
-            tokenizer.next(),
-            Some(Token::Word("hello world".to_string()))
-        );
-
-        assert_eq!(tokenizer.next(), None);
+        assert_eq!(tokenizer.next(), Ok(Token::Word("hello world".to_string())));
     }
 
     #[test]
@@ -235,10 +224,8 @@ mod tests {
 
         assert_eq!(
             tokenizer.next(),
-            Some(Token::QuotedString("hello ' \n world".to_string()))
+            Ok(Token::QuotedString("hello ' \n world".to_string()))
         );
-
-        assert_eq!(tokenizer.next(), None);
     }
 
     #[test]

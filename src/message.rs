@@ -17,7 +17,7 @@ pub struct Message {
 }
 
 #[derive(Debug, Serialize)]
-pub struct EnumTuple(pub String, pub u32);
+pub struct EnumTuple(pub String, pub i32);
 
 fn is_false(value: &bool) -> bool {
     *value == false

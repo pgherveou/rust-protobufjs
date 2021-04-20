@@ -5,10 +5,16 @@ use thiserror::Error;
 #[derive(Error, Debug, PartialEq)]
 #[error("...")]
 pub enum TokenError {
+    #[error("Unexpected end of file")]
     EOF,
-    InvalidEscapeSequence(char),
+
+    #[error("Invalid delimiter {0}")]
     InvalidStringDelimiter(char),
-    MissingEndDelimiter { delimiter: char },
+
+    #[error("Invalid end delimiter {0}")]
+    MissingEndDelimiter(char),
+
+    #[error("Unexpected char {0}")]
     UnexpectedChar(char),
 }
 
@@ -24,14 +30,14 @@ pub enum ParseError {
     #[error("unexpected top-level token: {0}")]
     UnexpectedTopLevelToken(Token),
 
-    #[error("unexpected message token: {0}")]
-    UnexpectedMessageToken(Token),
-
     #[error("unexpected string: {0}")]
     UnexpectedString(Token),
 
-    #[error("unexpected token: \"{0}\"")]
-    UnexpectedToken(Token),
+    #[error("unexpected token: {0}")]
+    IllegalToken(Token),
+
+    #[error("unexpected token: \"{found:?}\" expected {expected:?}")]
+    UnexpectedToken { found: Token, expected: Vec<Token> },
 
     #[error("failed to parse field id: {0}")]
     ParseFieldId(ParseIntError),
@@ -49,7 +55,7 @@ impl From<TokenError> for ParseError {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq)]
 pub struct ParseFileError<'a> {
     file_name: &'a str,
     content: &'a str,
