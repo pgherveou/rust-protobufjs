@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package pb.hello;
+
+option go_package = "hello";
+option java_package = "com.hello.service.api.v1";
+option java_multiple_files = true;
+option py_generic_services = true;
+
+service HelloWorld {
+    rpc SayHello (SayHelloRequest) returns (SayHelloResponse) {}
+    rpc LotsOfReplies(SayHelloRequest) returns (stream SayHelloResponse) {}
+    rpc LotsOfGreetings(stream SayHelloRequest) returns (SayHelloResponses) {}
+    rpc BidiHello(stream SayHelloRequest) returns (stream SayHelloResponse) {}
+}
+
+message SayHelloRequest {
+    string name = 1 [(ignored).option = true];
+    string phone = 2;
+    map<string, uint32> a_map = 3;
+    repeated string an_array = 4;
+
+    oneof a_oneof {
+        string maybe_string = 5;
+        uint32 maybe_int = 6;
+    }
+}
+
+message SayHelloResponse {
+    string hello = 1;
+}
+
+message SayHelloResponses {
+    repeated SayHelloResponse responses = 1;
+}
