@@ -1,7 +1,7 @@
-use std::{ptr::NonNull, vec};
+use std::vec;
 
 use crate::{
-    message::{EnumTuple, Field, Message, Oneof},
+    message::{Enum, Field, FieldRule, Message, Oneof},
     namespace::Namespace,
     parse_error::{ParseError, ParseFileError},
     service::{Rpc, Service},
@@ -9,42 +9,80 @@ use crate::{
     tokenizer::Tokenizer,
 };
 
-pub struct Parser<'a> {
-    file_name: &'a str,
-    content: &'a str,
-    tokenizer: Tokenizer,
+pub struct Parser {
     pub root: Box<Namespace>,
-    package: Option<NonNull<Namespace>>,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(file_name: &'a str, content: &'a str) -> Self {
+impl Parser {
+    pub fn new() -> Self {
         Self {
-            file_name,
-            content,
-            tokenizer: Tokenizer::new(content),
             root: Namespace::root(),
-            package: None,
         }
     }
 
-    pub fn parse(&mut self) -> Result<(), ParseFileError> {
-        self.parse_internal().map_err(|error| {
-            ParseFileError::new(
-                self.file_name,
-                self.content,
-                self.tokenizer.current_position(),
+    pub fn parse_file<'a>(
+        &mut self,
+        file_name: &'a str,
+        content: &'a str,
+    ) -> Result<(), ParseFileError<'a>> {
+        let mut file_parser = FileParser::new(file_name, content);
+        let namespace = file_parser.parse().map_err(|error| {
+            return ParseFileError::new(
+                file_name,
+                content,
+                file_parser.tokenizer.current_position(),
                 error,
-            )
+            );
         })?;
+
+        self.root.append_child(namespace);
         Ok(())
     }
 
-    fn parse_internal(&mut self) -> Result<(), ParseError> {
+    // fn parse_package(&mut self) -> Result<(), ParseError> {
+    //     if self.package.is_some() {
+    //         return Err(ParseError::PackageAlreadySet);
+    //     }
+
+    //     let name = self.read_word()?;
+    //     self.package = self.root.define(name.as_str()).as_ptr();
+    //     self.expect_token(Token::SemiColon)?;
+    //     Ok(())
+    // }
+
+    // pub fn parse(&mut self) -> Result<(), ParseFileError> {
+    //     self.parse_internal().map_err(|error| {
+    //         ParseFileError::new(
+    //             self.file_name,
+    //             self.content,
+    //             self.tokenizer.current_position(),
+    //             error,
+    //         )
+    //     })?;
+    //     Ok(())
+    // }
+}
+
+pub struct FileParser<'a> {
+    pub file_name: &'a str,
+    tokenizer: Tokenizer,
+    namespace: Option<Box<Namespace>>,
+}
+
+impl<'a> FileParser<'a> {
+    pub fn new(file_name: &'a str, content: &'a str) -> Self {
+        Self {
+            file_name,
+            tokenizer: Tokenizer::new(content),
+            namespace: None,
+        }
+    }
+
+    pub fn parse(&mut self) -> Result<Box<Namespace>, ParseError> {
         loop {
             match self.tokenizer.next()? {
                 Token::EOF => {
-                    return Ok(());
+                    return self.namespace.take().ok_or(ParseError::PackageNotSet);
                 }
                 Token::Package => {
                     self.parse_package()?;
@@ -55,9 +93,9 @@ impl<'a> Parser<'a> {
                 Token::Syntax => {
                     let syntax = self.parse_syntax()?;
 
-                    // ignore proto2 for now
+                    // TODO handle proto2
                     if syntax == "proto2" {
-                        return Ok(());
+                        return Err(ParseError::ProtoSyntaxNotSupported(syntax));
                     }
                 }
                 Token::Option => {
@@ -65,18 +103,18 @@ impl<'a> Parser<'a> {
                 }
                 Token::Service => {
                     let service = self.parse_service()?;
-                    self.package_mut()?.add_service(service);
+                    self.namespace_mut()?.add_service(service);
                 }
                 Token::Message => {
                     let (name, message) = self.parse_message()?;
-                    self.package_mut()?.add_message(name, message);
+                    self.namespace_mut()?.add_message(name, message);
                 }
                 Token::Extend => {
                     self.parse_message()?;
                 }
                 Token::Enum => {
                     let (name, enum_tuples) = self.parse_enum()?;
-                    self.package_mut()?.add_enum(name, enum_tuples);
+                    self.namespace_mut()?.add_enum(name, enum_tuples);
                 }
                 Token::SemiColon => {
                     // relax extra ;
@@ -87,20 +125,18 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn package_mut(&mut self) -> Result<&mut Namespace, ParseError> {
-        self.package
-            .as_mut()
-            .map(|x| unsafe { x.as_mut() })
-            .ok_or(ParseError::PackageNotSet)
+    fn namespace_mut(&mut self) -> Result<&mut Box<Namespace>, ParseError> {
+        self.namespace.as_mut().ok_or(ParseError::PackageNotSet)
     }
 
     fn parse_package(&mut self) -> Result<(), ParseError> {
-        if self.package.is_some() {
+        if self.namespace.is_some() {
             return Err(ParseError::PackageAlreadySet);
         }
 
         let name = self.read_word()?;
-        self.package = self.root.define(name.as_str()).as_ptr();
+        self.namespace = Some(Namespace::new(&name, None));
+
         self.expect_token(Token::SemiColon)?;
         Ok(())
     }
@@ -147,7 +183,6 @@ impl<'a> Parser<'a> {
                 Token::Message => {
                     let (name, nested_message) = self.parse_message()?;
                     message.add_nested(name, nested_message);
-                    // self.expect_token(Token::SemiColon)?;
                 }
                 Token::Oneof => {
                     let name = self.read_word()?;
@@ -166,7 +201,8 @@ impl<'a> Parser<'a> {
                 }
                 Token::Repeated => {
                     let type_name = self.read_word()?;
-                    let (name, field) = self.parse_message_field(type_name, true, None)?;
+                    let (name, field) =
+                        self.parse_message_field(type_name, Some(FieldRule::Repeated), None)?;
                     message.add_field(name, field);
                 }
                 Token::Map => {
@@ -176,11 +212,11 @@ impl<'a> Parser<'a> {
                     let type_name = self.read_word()?;
                     self.expect_token(Token::CloseAngularBracket)?;
                     let (name, field) =
-                        self.parse_message_field(type_name, true, Some(key_type))?;
+                        self.parse_message_field(type_name, None, Some(key_type))?;
                     message.add_field(name, field);
                 }
                 Token::Word(type_name) => {
-                    let (name, field) = self.parse_message_field(type_name, false, None)?;
+                    let (name, field) = self.parse_message_field(type_name, None, None)?;
                     match oneof {
                         Some(ref mut oneof) => oneof.add_field_name(name.to_string()),
                         None => {}
@@ -290,7 +326,7 @@ impl<'a> Parser<'a> {
     fn parse_message_field(
         &mut self,
         type_name: String,
-        repeated: bool,
+        rule: Option<FieldRule>,
         key_type: Option<String>,
     ) -> Result<(String, Field), ParseError> {
         let field_name = self.read_word()?;
@@ -316,20 +352,17 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok((
-            field_name,
-            Field::new(field_id, type_name, repeated, key_type),
-        ))
+        Ok((field_name, Field::new(field_id, type_name, rule, key_type)))
     }
 
-    fn parse_enum(&mut self) -> Result<(String, Vec<EnumTuple>), ParseError> {
+    fn parse_enum(&mut self) -> Result<(String, Enum), ParseError> {
         let enum_name = self.read_word()?;
-        let mut enum_values = Vec::new();
+        let mut e = Enum::new();
         self.expect_token(Token::OpenCurlyBracket)?;
 
         loop {
             match self.tokenizer.next()? {
-                Token::CloseCurlyBracket => return Ok((enum_name, enum_values)),
+                Token::CloseCurlyBracket => return Ok((enum_name, e)),
                 Token::Word(key) => {
                     self.expect_token(Token::Equal)?;
 
@@ -354,7 +387,7 @@ impl<'a> Parser<'a> {
                         }
                     }
 
-                    enum_values.push(EnumTuple(key, value));
+                    e.insert(key, value);
                 }
                 Token::Option => {
                     self.parse_option()?;
@@ -405,10 +438,6 @@ impl<'a> Parser<'a> {
             found: token,
             expected: vec![expected],
         })
-    }
-
-    pub fn print(&self) {
-        println!("{}", self.root.fullname)
     }
 }
 

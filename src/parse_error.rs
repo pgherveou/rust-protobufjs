@@ -24,6 +24,9 @@ pub enum ParseError {
     #[error("package not set")]
     PackageNotSet,
 
+    #[error("proto version {0} not supported")]
+    ProtoSyntaxNotSupported(String),
+
     #[error("package already set to")]
     PackageAlreadySet,
 
@@ -57,10 +60,10 @@ impl From<TokenError> for ParseError {
 
 #[derive(Error, Debug, PartialEq)]
 pub struct ParseFileError<'a> {
-    file_name: &'a str,
+    pub file_name: &'a str,
+    pub error: ParseError,
     content: &'a str,
     position: Position,
-    error: ParseError,
 }
 
 impl<'a> Display for ParseFileError<'a> {

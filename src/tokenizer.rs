@@ -231,14 +231,14 @@ mod tests {
     #[test]
     fn it_should_parse_double_slash_comment() {
         let mut tokenizer = Tokenizer::new("// hello world");
-        tokenizer.next();
+        tokenizer.next().unwrap();
         assert_eq!(tokenizer.comment, Some(" hello world".to_string()));
     }
 
     #[test]
     fn it_should_parse_slash_star_comment() {
         let mut tokenizer = Tokenizer::new("/* hello world */");
-        tokenizer.next();
+        tokenizer.next().unwrap();
         assert_eq!(tokenizer.comment, Some(" hello world ".to_string()));
     }
 }

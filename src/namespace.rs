@@ -2,7 +2,7 @@ use serde::{ser::SerializeStruct, Serialize, Serializer};
 use std::{collections::HashMap, ptr::NonNull};
 
 use crate::{
-    message::{EnumTuple, Message},
+    message::{Enum, Message},
     service::Service,
 };
 
@@ -34,7 +34,7 @@ pub struct Namespace {
     messages: HashMap<String, Message>,
 
     #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
-    enums: HashMap<String, Vec<EnumTuple>>,
+    enums: HashMap<String, Enum>,
 }
 
 impl Serialize for Namespace {
@@ -62,7 +62,7 @@ impl Serialize for Namespace {
 }
 
 impl Namespace {
-    fn new(fullname: &str, parent: Option<NonNull<Namespace>>) -> Box<Namespace> {
+    pub fn new(fullname: &str, parent: Option<NonNull<Namespace>>) -> Box<Namespace> {
         Box::new(Self {
             fullname: fullname.to_string(),
             nested: HashMap::new(),
@@ -85,8 +85,8 @@ impl Namespace {
         self.messages.insert(name, message);
     }
 
-    pub fn add_enum(&mut self, name: String, enum_tuples: Vec<EnumTuple>) {
-        self.enums.insert(name, enum_tuples);
+    pub fn add_enum(&mut self, name: String, e: Enum) {
+        self.enums.insert(name, e);
     }
 
     pub fn add_service(&mut self, service: Service) {
@@ -121,8 +121,8 @@ impl Namespace {
         Some(ptr)
     }
 
-    pub fn define<'a>(&mut self, path: &'a str) -> &mut Namespace {
-        let mut paths = path.split(".");
+    pub fn append_child<'a>(&mut self, child: Box<Namespace>) {
+        let mut paths = child.fullname.split(".");
         let mut fullname = self.fullname.to_string();
         let mut ptr = self;
 
@@ -134,7 +134,20 @@ impl Namespace {
             ptr = ptr.or_insert_with_child(name, fullname.as_str());
         }
 
-        ptr
+        ptr.merge_with(child);
+    }
+
+    fn merge_with(&mut self, other: Box<Namespace>) {
+        let Namespace {
+            messages,
+            enums,
+            services,
+            ..
+        } = *other;
+
+        self.messages.extend(messages);
+        self.enums.extend(enums);
+        self.services.extend(services);
     }
 }
 
@@ -145,12 +158,25 @@ mod tests {
     #[test]
     fn test_add_child() {
         let mut root = Namespace::root();
-        let ns = root.define("pb.foo.bar");
+        let child = Namespace::new("pb.foo.bar", None);
+        root.append_child(child);
 
-        assert_eq!(ns.fullname, "pb.foo.bar");
-        assert_eq!(ns.parent().unwrap().fullname, "pb.foo");
+        let pb = root.child("pb");
+        assert!(pb.is_some(), "should have a pb child");
+        let pb = pb.unwrap();
+        assert!(pb.parent.is_some(), "should have a pb child");
 
-        assert_eq!(root.child("pb").unwrap().fullname, "pb");
-        assert_eq!(root.child("pb.foo").unwrap().fullname, "pb.foo");
+        let foo = pb.child("foo");
+        assert!(foo.is_some(), "should have a pb.foo child");
+        let foo = foo.unwrap();
+        assert!(foo.parent.is_some(), "should have a pb child");
+
+        let bar = foo.child("bar");
+        assert!(bar.is_some(), "should have a pb.foo.bar child");
+        let bar = bar.unwrap();
+        assert!(bar.parent.is_some(), "should have a pb child");
+
+        // assert_eq!(root.child("pb").unwrap().fullname, "pb");
+        // assert_eq!(root.child("pb.foo").unwrap().fullname, "pb.foo");
     }
 }

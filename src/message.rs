@@ -4,43 +4,70 @@ use serde::Serialize;
 
 #[derive(Debug, Serialize)]
 pub struct Message {
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    oneofs: HashMap<String, Vec<String>>,
-
     fields: HashMap<String, Field>,
 
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    nested: HashMap<String, Message>,
+    oneofs: HashMap<String, Vec<String>>,
 
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    enums: HashMap<String, Vec<EnumTuple>>,
+    nested: HashMap<String, NestedObject>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct EnumTuple(pub String, pub i32);
+#[serde(untagged)]
+pub enum NestedObject {
+    Message(Message),
+    Enum(Enum),
+}
 
-fn is_false(value: &bool) -> bool {
-    *value == false
+#[derive(Debug, Serialize)]
+pub struct Enum {
+    values: HashMap<String, i32>,
+}
+
+impl Enum {
+    pub fn new() -> Self {
+        Self {
+            values: HashMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, key: String, value: i32) {
+        self.values.insert(key, value);
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FieldRule {
+    Repeated,
 }
 
 #[derive(Debug, Serialize)]
 pub struct Field {
     pub id: u32,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "keyType", skip_serializing_if = "Option::is_none")]
     pub key_type: Option<String>,
+
+    #[serde(rename = "type")]
     pub type_name: String,
 
-    #[serde(skip_serializing_if = "is_false")]
-    pub repeated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rule: Option<FieldRule>,
 }
 
 impl Field {
-    pub fn new(id: u32, type_name: String, repeated: bool, key_type: Option<String>) -> Field {
+    pub fn new(
+        id: u32,
+        type_name: String,
+        rule: Option<FieldRule>,
+        key_type: Option<String>,
+    ) -> Field {
         Self {
             id,
             type_name,
-            repeated,
+            rule,
             key_type,
         }
     }
@@ -65,7 +92,6 @@ impl Message {
             fields: HashMap::new(),
             nested: HashMap::new(),
             oneofs: HashMap::new(),
-            enums: HashMap::new(),
         }
     }
 
@@ -74,8 +100,8 @@ impl Message {
         self.oneofs.insert(name, value);
     }
 
-    pub fn add_enum(&mut self, name: String, enum_tuples: Vec<EnumTuple>) {
-        self.enums.insert(name, enum_tuples);
+    pub fn add_enum(&mut self, name: String, e: Enum) {
+        self.nested.insert(name, NestedObject::Enum(e));
     }
 
     pub fn add_field(&mut self, name: String, field: Field) {
@@ -83,6 +109,6 @@ impl Message {
     }
 
     pub fn add_nested(&mut self, name: String, message: Message) {
-        self.nested.insert(name, message);
+        self.nested.insert(name, NestedObject::Message(message));
     }
 }
