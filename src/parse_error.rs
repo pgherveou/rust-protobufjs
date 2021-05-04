@@ -62,7 +62,7 @@ impl From<TokenError> for ParseError {
 pub struct ParseFileError<'a> {
     pub file_name: &'a str,
     pub error: ParseError,
-    content: &'a str,
+    content: String,
     position: Position,
 }
 
@@ -101,7 +101,7 @@ impl<'a> Display for ParseFileError<'a> {
 impl<'a> ParseFileError<'a> {
     pub fn new(
         file_name: &'a str,
-        content: &'a str,
+        content: String,
         position: Position,
         error: ParseError,
     ) -> ParseFileError<'a> {

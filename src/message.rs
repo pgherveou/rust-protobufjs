@@ -7,7 +7,7 @@ pub struct Message {
     fields: HashMap<String, Field>,
 
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    oneofs: HashMap<String, Vec<String>>,
+    oneofs: HashMap<String, Oneof>,
 
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     nested: HashMap<String, NestedObject>,
@@ -74,15 +74,18 @@ impl Field {
 }
 
 #[derive(Debug, Serialize)]
-pub struct Oneof(pub String, pub Vec<String>);
+pub struct Oneof {
+    #[serde(rename = "oneof")]
+    pub values: Vec<String>,
+}
 
 impl Oneof {
-    pub fn new(name: String) -> Self {
-        Oneof(name, Vec::new())
+    pub fn new() -> Self {
+        Self { values: Vec::new() }
     }
 
     pub fn add_field_name(&mut self, value: String) {
-        self.1.push(value);
+        self.values.push(value);
     }
 }
 
@@ -95,9 +98,8 @@ impl Message {
         }
     }
 
-    pub fn add_oneof(&mut self, oneof: Oneof) {
-        let Oneof(name, value) = oneof;
-        self.oneofs.insert(name, value);
+    pub fn add_oneof(&mut self, name: String, oneof: Oneof) {
+        self.oneofs.insert(name, oneof);
     }
 
     pub fn add_enum(&mut self, name: String, e: Enum) {

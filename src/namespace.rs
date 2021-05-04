@@ -1,25 +1,22 @@
 use serde::{ser::SerializeStruct, Serialize, Serializer};
-use std::{collections::HashMap, ptr::NonNull};
+use std::{
+    collections::{HashMap, HashSet},
+    ptr::NonNull,
+};
 
 use crate::{
     message::{Enum, Message},
     service::Service,
 };
 
-// pub fn ser_with<S>(id: &String, s: S) -> Result<S::Ok, S::Error>
-// where
-//     S: Serializer,
-// {
-//     let mut ser = s.serialize_map(Some(1))?;
-//     ser.serialize_entry("$oid", &id)?;
-//     ser.end()
-// }
-
 #[derive(Serialize, Debug)]
 #[serde(remote = "Self")]
 pub struct Namespace {
     #[serde(skip_serializing, skip_deserializing)]
     pub fullname: String,
+
+    #[serde(skip_serializing, skip_deserializing)]
+    pub imports: HashSet<String>,
 
     #[serde(skip_serializing, skip_deserializing)]
     parent: Option<NonNull<Namespace>>,
@@ -65,6 +62,7 @@ impl Namespace {
     pub fn new(fullname: &str, parent: Option<NonNull<Namespace>>) -> Box<Namespace> {
         Box::new(Self {
             fullname: fullname.to_string(),
+            imports: HashSet::new(),
             nested: HashMap::new(),
             messages: HashMap::new(),
             enums: HashMap::new(),
@@ -79,6 +77,10 @@ impl Namespace {
 
     pub fn as_ptr(&mut self) -> Option<NonNull<Namespace>> {
         NonNull::new(self)
+    }
+
+    pub fn add_import(&mut self, import: String) {
+        self.imports.insert(import);
     }
 
     pub fn add_message(&mut self, name: String, message: Message) {

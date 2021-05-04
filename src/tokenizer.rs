@@ -21,7 +21,7 @@ impl Tokenizer {
         }
     }
 
-    pub fn current_position(&mut self) -> Position {
+    pub fn current_position(&self) -> Position {
         self.chars.current_position()
     }
 

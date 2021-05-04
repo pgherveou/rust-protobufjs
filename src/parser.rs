@@ -1,9 +1,10 @@
-use std::vec;
+use std::{collections::HashSet, vec};
 
 use crate::{
     message::{Enum, Field, FieldRule, Message, Oneof},
     namespace::Namespace,
     parse_error::{ParseError, ParseFileError},
+    position::Position,
     service::{Rpc, Service},
     token::Token,
     tokenizer::Tokenizer,
@@ -11,31 +12,27 @@ use crate::{
 
 pub struct Parser {
     pub root: Box<Namespace>,
+    parsed_files: HashSet<String>,
 }
 
 impl Parser {
     pub fn new() -> Self {
         Self {
             root: Namespace::root(),
+            parsed_files: HashSet::new(),
         }
     }
 
-    pub fn parse_file<'a>(
-        &mut self,
-        file_name: &'a str,
-        content: &'a str,
-    ) -> Result<(), ParseFileError<'a>> {
-        let mut file_parser = FileParser::new(file_name, content);
-        let namespace = file_parser.parse().map_err(|error| {
-            return ParseFileError::new(
-                file_name,
-                content,
-                file_parser.tokenizer.current_position(),
-                error,
-            );
-        })?;
+    pub fn parse_file<'a>(&mut self, file_name: &'a str) -> Result<(), ParseFileError<'a>> {
+        let content = std::fs::read_to_string(file_name).unwrap();
+        let mut file_parser = FileParser::new(file_name, &content);
+        let namespace = file_parser
+            .parse()
+            .map_err(|error| (error, file_parser.current_position()))
+            .map_err(|it| ParseFileError::new(file_name, content, it.1, it.0))?;
 
         self.root.append_child(namespace);
+        self.parsed_files.insert(file_name.to_string());
         Ok(())
     }
 
@@ -76,6 +73,10 @@ impl<'a> FileParser<'a> {
             tokenizer: Tokenizer::new(content),
             namespace: None,
         }
+    }
+
+    pub fn current_position(&self) -> Position {
+        return self.tokenizer.current_position();
     }
 
     pub fn parse(&mut self) -> Result<Box<Namespace>, ParseError> {
@@ -142,15 +143,12 @@ impl<'a> FileParser<'a> {
     }
 
     fn parse_import(&mut self) -> Result<(), ParseError> {
-        match self.tokenizer.next()? {
-            Token::Public => {
-                self.tokenizer.next()?.as_quoted_string()?;
-            }
-            token => {
-                token.as_quoted_string()?;
-            }
-        }
+        let import = match self.tokenizer.next()? {
+            Token::Public => self.tokenizer.next()?.as_quoted_string()?,
+            token => token.as_quoted_string()?,
+        };
 
+        self.namespace_mut()?.add_import(import);
         self.expect_token(Token::SemiColon)?;
         Ok(())
     }
@@ -177,7 +175,7 @@ impl<'a> FileParser<'a> {
         loop {
             match self.tokenizer.next()? {
                 Token::CloseCurlyBracket => match oneof.take() {
-                    Some(oneof) => message.add_oneof(oneof),
+                    Some((name, oneof)) => message.add_oneof(name, oneof),
                     None => break,
                 },
                 Token::Message => {
@@ -186,7 +184,7 @@ impl<'a> FileParser<'a> {
                 }
                 Token::Oneof => {
                     let name = self.read_word()?;
-                    oneof = Some(Oneof::new(name));
+                    oneof = Some((name, Oneof::new()));
                     self.expect_token(Token::OpenCurlyBracket)?;
                 }
                 Token::Enum => {
@@ -217,9 +215,9 @@ impl<'a> FileParser<'a> {
                 }
                 Token::Word(type_name) => {
                     let (name, field) = self.parse_message_field(type_name, None, None)?;
-                    match oneof {
-                        Some(ref mut oneof) => oneof.add_field_name(name.to_string()),
-                        None => {}
+
+                    if let Some(ref mut oneof) = oneof {
+                        oneof.1.add_field_name(name.to_string())
                     }
 
                     message.add_field(name, field);
