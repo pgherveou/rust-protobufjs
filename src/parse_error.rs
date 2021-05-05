@@ -1,5 +1,5 @@
 use crate::{position::Position, token::Token};
-use std::{fmt::Display, num::ParseIntError};
+use std::{io, num::ParseIntError, path::PathBuf};
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
@@ -39,7 +39,7 @@ pub enum ParseError {
     #[error("unexpected token: {0}")]
     IllegalToken(Token),
 
-    #[error("unexpected token: \"{found:?}\" expected {expected:?}")]
+    #[error("unexpected token: \"{found}\" expected one of {expected:?}")]
     UnexpectedToken { found: Token, expected: Vec<Token> },
 
     #[error("failed to parse field id: {0}")]
@@ -58,24 +58,33 @@ impl From<TokenError> for ParseError {
     }
 }
 
-#[derive(Error, Debug, PartialEq)]
-pub struct ParseFileError<'a> {
-    pub file_name: &'a str,
-    pub error: ParseError,
-    content: String,
-    position: Position,
+#[derive(Error, Debug)]
+#[error("...")]
+pub enum ParseFileError {
+    #[error("Failed to read file {file_name}. {error}")]
+    Read {
+        file_name: PathBuf,
+        error: io::Error,
+    },
+
+    #[error("{0}")]
+    ParseError(String),
 }
 
-impl<'a> Display for ParseFileError<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let line_number = self.position.line;
+impl ParseFileError {
+    pub fn from_parse_error(
+        error: ParseError,
+        file_name: PathBuf,
+        content: &str,
+        position: Position,
+    ) -> ParseFileError {
+        let line_number = position.line;
         let line_number_width = line_number.to_string().len();
-        let show_lines = std::cmp::min(self.position.line, 3);
+        let show_lines = std::cmp::min(position.line, 3);
 
-        let lines = self
-            .content
+        let lines = content
             .split('\n')
-            .skip(self.position.line - show_lines)
+            .skip(position.line - show_lines)
             .take(show_lines)
             .enumerate()
             .map(|(i, v)| {
@@ -89,27 +98,16 @@ impl<'a> Display for ParseFileError<'a> {
             .collect::<Vec<String>>()
             .join("\n");
 
-        let padding = (0..self.position.column + line_number_width + 1)
+        let padding = (0..position.column + line_number_width + 1)
             .map(|_| ' ')
             .collect::<String>();
 
-        write!(f, "{}\n", lines)?;
-        write!(f, "{}{}", padding, self.error)
-    }
-}
-
-impl<'a> ParseFileError<'a> {
-    pub fn new(
-        file_name: &'a str,
-        content: String,
-        position: Position,
-        error: ParseError,
-    ) -> ParseFileError<'a> {
-        return Self {
-            file_name,
-            content,
-            position,
-            error,
-        };
+        ParseFileError::ParseError(format!(
+            "Failed to parse {}\n{}\n{}{}",
+            file_name.display(),
+            lines,
+            padding,
+            error
+        ))
     }
 }

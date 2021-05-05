@@ -1,33 +1,30 @@
 use glob::glob;
-
-use protobuf::parse_error::ParseError;
 use protobuf::parser::Parser;
+use std::{collections::HashSet, path::PathBuf};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut parser = Parser::new();
+fn main() {
+    match run() {
+        Err(err) => println!("{}", err),
+        Ok(()) => println!("Ok"),
+    }
+}
 
-    let entries = glob("/Users/pgherveou/src/idl/protos/pb/lyft/lastmile/**/*.proto")
-        .expect("Failed to read glob pattern");
-    // let entries =
-    //     glob("/Users/pgherveou/src/idl/protos/pb/**/*.proto").expect("Failed to read glob pattern");
+fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let root_dir = PathBuf::from("/Users/pgherveou/src/idl/protos");
+
+    let mut ignored_files = HashSet::new();
+    ignored_files.insert(root_dir.join("validate/validate.proto"));
+    ignored_files.insert(root_dir.join("google/rpc/status.proto"));
+    ignored_files.insert(root_dir.join("google/api/annotations.proto"));
+    ignored_files.insert(root_dir.join("google/api/expr/v1alpha1/syntax.proto"));
+
+    let mut parser = Parser::new(root_dir, ignored_files);
+
+    let entries = glob("/Users/pgherveou/src/idl/protos/pb/**/*.proto")?;
 
     for entry in entries {
-        let path = entry?;
-        let file_name = path.to_str().unwrap();
-
-        match parser.parse_file(file_name) {
-            Ok(_) => {}
-
-            Err(err) => match err.error {
-                ParseError::ProtoSyntaxNotSupported(_) => {
-                    println!("skip {} {}", file_name, err);
-                }
-                _ => {
-                    println!("{}", err);
-                    break;
-                }
-            },
-        }
+        let file_name = entry?;
+        parser.parse_file(file_name)?;
     }
 
     let json = serde_json::to_string_pretty(&parser.root).unwrap();
@@ -36,7 +33,3 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("wrote {}", output_file);
     Ok(())
 }
-
-// fn test_serde_json_serializer(root: &Box<Namespace>) -> String {
-//     serde_json::to_string(root).unwrap()
-// }

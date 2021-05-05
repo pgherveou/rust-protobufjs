@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-
+use derive_more::Display;
 use serde::Serialize;
+use std::collections::HashMap;
 
 #[derive(Debug, Serialize)]
 pub struct Message {
@@ -37,10 +37,17 @@ impl Enum {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Display, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum FieldRule {
+    #[display(fmt = "repeated")]
     Repeated,
+
+    #[display(fmt = "optional")]
+    Optional,
+
+    #[display(fmt = "required")]
+    Required,
 }
 
 #[derive(Debug, Serialize)]

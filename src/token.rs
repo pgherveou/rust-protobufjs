@@ -1,4 +1,4 @@
-use crate::parse_error::ParseError;
+use crate::{message::FieldRule, parse_error::ParseError};
 use derive_more::Display;
 
 #[derive(Display, Debug, PartialEq)]
@@ -7,34 +7,34 @@ pub enum Token {
     EOF,
 
     #[display(fmt = "=")]
-    Equal,
+    Eq,
 
     #[display(fmt = ";")]
-    SemiColon,
+    Semi,
 
     #[display(fmt = "{{")]
-    OpenCurlyBracket,
+    LBrace,
 
     #[display(fmt = "}}")]
-    CloseCurlyBracket,
+    RBrace,
 
     #[display(fmt = "(")]
-    OpenParenthesis,
+    LParen,
 
     #[display(fmt = ")")]
-    CloseParenthesis,
+    RParen,
 
     #[display(fmt = "[")]
-    OpenBracket,
+    LBrack,
 
     #[display(fmt = "]")]
-    CloseBracket,
+    RBrack,
 
     #[display(fmt = "<")]
-    OpenAngularBracket,
+    LAngle,
 
     #[display(fmt = ">")]
-    CloseAngularBracket,
+    Rangle,
 
     #[display(fmt = ",")]
     Comma,
@@ -47,10 +47,10 @@ pub enum Token {
     Service,
     Rpc,
     Stream,
-    Repeated,
+    FieldRule(FieldRule),
+    Extensions,
     Map,
     Package,
-    Optional,
     Message,
     Extend,
     Enum,
@@ -74,7 +74,9 @@ impl Token {
             Token::Option => Ok("option".to_string()),
             Token::Service => Ok("service".to_string()),
             Token::Public => Ok("public".to_string()),
+            Token::Extensions => Ok("extensions".to_string()),
             Token::Enum => Ok("enum".to_string()),
+            Token::FieldRule(rule) => Ok(rule.to_string()),
             // Token::Rpc => Ok("rpc".to_string()),
             // Token::Stream => Ok("stream".to_string()),
             // Token::Repeated => Ok("repeated".to_string()),
@@ -107,7 +109,7 @@ mod tests {
 
     #[test]
     fn it_should_display() {
-        let s = Token::SemiColon.to_string();
+        let s = Token::Semi.to_string();
         println!("{}", s)
     }
 }
