@@ -7,8 +7,8 @@ fn is_false(value: &bool) -> bool {
     *value == false
 }
 
-/// Defines a rpc Service
-/// See https://developers.google.com/protocol-buffers/docs/proto3#services
+/// Defines a rpc service
+/// [service] https://developers.google.com/protocol-buffers/docs/proto3#services
 #[derive(Debug, Serialize)]
 pub struct Service {
     /// The list of rpc methods defined by this service
@@ -29,8 +29,8 @@ impl Service {
     }
 }
 
-/// Rpc defines a rpc method of a Service
-/// See https://developers.google.com/protocol-buffers/docs/proto3#services
+/// Rpc defines a [rpc] method of a Service
+/// [rpc] https://developers.google.com/protocol-buffers/docs/proto3#services
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Rpc {

@@ -2,8 +2,8 @@ use derive_more::Display;
 use serde::Serialize;
 use std::collections::HashMap;
 
-/// Message defines a proto message
-/// see https://developers.google.com/protocol-buffers/docs/proto3#simple
+/// Message defines a proto [message]
+/// [message] https://developers.google.com/protocol-buffers/docs/proto3#simple
 #[derive(Debug, Serialize)]
 pub struct Message {
     /// A map of name => fields
@@ -57,8 +57,8 @@ pub enum NestedObject {
     Enum(Enum),
 }
 
-/// Enum defines a proto emum
-/// see https://developers.google.com/protocol-buffers/docs/proto3#enum
+/// Enum defines a proto [emum]
+/// [enum] https://developers.google.com/protocol-buffers/docs/proto3#enum
 #[derive(Debug, Serialize)]
 pub struct Enum {
     /// a map of name => field id
@@ -79,8 +79,8 @@ impl Enum {
     }
 }
 
-/// FieldRule represents a proto field rule
-/// See https://developers.google.com/protocol-buffers/docs/proto#specifying_field_rules
+/// FieldRule represents a proto [field rule]
+/// [field rule] https://developers.google.com/protocol-buffers/docs/proto#specifying_field_rules
 #[derive(Display, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum FieldRule {
@@ -94,8 +94,8 @@ pub enum FieldRule {
     Required,
 }
 
-/// Field represents a proto message field
-/// see https://developers.google.com/protocol-buffers/docs/proto#specifying_field_types
+/// Field represents a proto message [field]
+/// [field] https://developers.google.com/protocol-buffers/docs/proto#specifying_field_types
 #[derive(Debug, Serialize)]
 pub struct Field {
     // The field Id
@@ -131,8 +131,8 @@ impl Field {
     }
 }
 
-/// Oneof represents a proto oneof field
-/// see https://developers.google.com/protocol-buffers/docs/proto#oneof
+/// Oneof represents a proto [oneof] field
+/// [oneof] https://developers.google.com/protocol-buffers/docs/proto#oneof
 #[derive(Debug, Serialize)]
 pub struct Oneof {
     #[serde(rename = "oneof")]

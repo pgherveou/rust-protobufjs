@@ -136,13 +136,14 @@ impl<I: Iterator<Item = char>> FileParser<I> {
         }
     }
 
-    /// Parse the package name
-    /// see https://developers.google.com/protocol-buffers/docs/proto3#packages
+    /// Parse the [package] name
     /// For example:
     ///
     /// ```proto
     /// package foo.bar;
     /// ```
+    ///
+    /// [package] https://developers.google.com/protocol-buffers/docs/proto3#packages
     fn parse_package(&mut self) -> Result<(), ParseError> {
         if !self.namespace.fullname.is_empty() {
             return Err(ParseError::PackageAlreadySet);
@@ -153,13 +154,14 @@ impl<I: Iterator<Item = char>> FileParser<I> {
         Ok(())
     }
 
-    /// Parse import statement
-    /// see https://developers.google.com/protocol-buffers/docs/proto3#importing_definitions
+    /// Parse [import] statement    
     /// For example:
     ///
     /// ```proto
     /// import "myproject/other_protos.proto";
     /// ```
+    ///
+    /// [import] https://developers.google.com/protocol-buffers/docs/proto3#importing_definitions
     fn parse_import(&mut self) -> Result<(), ParseError> {
         let import = match self.tokenizer.next()? {
             Token::Public => self.tokenizer.next()?.as_quoted_string()?,
@@ -171,16 +173,17 @@ impl<I: Iterator<Item = char>> FileParser<I> {
         Ok(())
     }
 
-    /// Parse import statement
+    /// Parse [syntax] statement
     /// Note: We don't add this information to the namespace,
     /// we only use the result here to validate that the proto syntax is supported     
-    ///
-    /// see https://developers.google.com/protocol-buffers/docs/proto3#simple
+    ///    
     /// For example:
     ///
     /// ```proto
     /// syntax = "proto3";
     /// ```
+    ///
+    /// [syntax] https://developers.google.com/protocol-buffers/docs/proto3#simple
     fn parse_syntax(&mut self) -> Result<String, ParseError> {
         self.expect_token(Token::Eq)?;
         let version = self.read_quoted_string()?;
@@ -188,17 +191,18 @@ impl<I: Iterator<Item = char>> FileParser<I> {
         Ok(version)
     }
 
-    /// Parse option statement
-    /// see https://developers.google.com/protocol-buffers/docs/proto3#options
+    /// Parse [option] statement    
     /// Note we currently don't use the options,
     /// the parser simply fast forward until the end of the option declaration
+    ///
+    /// [option] https://developers.google.com/protocol-buffers/docs/proto3#options
     fn parse_option(&mut self) -> Result<(), ParseError> {
         self.tokenizer.skip_until_token(Token::Semi)?;
         Ok(())
     }
 
-    /// Parse a message statement
-    /// see https://developers.google.com/protocol-buffers/docs/proto3#simple
+    /// Parse a [message] statement
+    ///
     /// For example:
     ///
     /// ```proto
@@ -208,6 +212,8 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     ///  int32 result_per_page = 3;
     /// }
     /// ```
+    ///
+    /// [message] https://developers.google.com/protocol-buffers/docs/proto3#simple
     fn parse_message(&mut self) -> Result<(String, Message), ParseError> {
         let message_name = self.read_identifier()?;
         self.expect_token(Token::LBrace)?;
@@ -278,9 +284,8 @@ impl<I: Iterator<Item = char>> FileParser<I> {
         Ok((message_name, message))
     }
 
-    /// Parse a service statement
+    /// Parse a [service] statement
     /// Returns the name and parsed service object
-    /// see https://developers.google.com/protocol-buffers/docs/proto3#services
     /// For example:
     ///
     /// ```proto
@@ -288,6 +293,8 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     ///  rpc Search(SearchRequest) returns (SearchResponse);
     /// }
     /// ```
+    ///
+    /// [service] https://developers.google.com/protocol-buffers/docs/proto3#services
     fn parse_service(&mut self) -> Result<(String, Service), ParseError> {
         let name = self.read_identifier()?;
         let mut service = Service::new();
@@ -321,14 +328,15 @@ impl<I: Iterator<Item = char>> FileParser<I> {
         Ok((name, service))
     }
 
-    /// Parse a rpc statement
+    /// Parse a [rpc] statement
     /// Returns the rpc name and parsed rpc object
-    /// see https://developers.google.com/protocol-buffers/docs/proto3#services
     /// For example:
     ///
     /// ```proto    
     /// rpc Search(SearchRequest) returns (SearchResponse);
     /// ```
+    ///
+    /// [rpc] https://developers.google.com/protocol-buffers/docs/proto3#services
     fn parse_rpc(&mut self) -> Result<(String, Rpc), ParseError> {
         let name = self.read_identifier()?;
 
@@ -382,14 +390,15 @@ impl<I: Iterator<Item = char>> FileParser<I> {
         ))
     }
 
-    /// Parse a message field
+    /// Parse a [message] field
     /// Returns the field name and parsed Field object
-    /// see https://developers.google.com/protocol-buffers/docs/proto3#specifying_field_rules
     /// For example:
     ///
     /// ```proto
     /// string query = 1;
     /// ```
+    ///
+    /// [message] https://developers.google.com/protocol-buffers/docs/proto3#specifying_field_rules
     fn parse_message_field(
         &mut self,
         type_name: String,
@@ -422,9 +431,8 @@ impl<I: Iterator<Item = char>> FileParser<I> {
         Ok((field_name, Field::new(field_id, type_name, rule, key_type)))
     }
 
-    /// Parse an enum
+    /// Parse an [enum]
     /// Returns the enum name and parsed Enum object
-    /// see https://developers.google.com/protocol-buffers/docs/proto3#enum
     /// For example:
     ///
     /// ```proto
@@ -434,6 +442,8 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     ///   RUNNING = 1;
     /// }
     /// ```
+    ///
+    /// [enum] https://developers.google.com/protocol-buffers/docs/proto3#enum
     fn parse_enum(&mut self) -> Result<(String, Enum), ParseError> {
         let enum_name = self.read_identifier()?;
         let mut e = Enum::new();
@@ -496,27 +506,29 @@ impl<I: Iterator<Item = char>> FileParser<I> {
         Ok(())
     }
 
-    /// Parse a message reserved fields
-    /// see https://developers.google.com/protocol-buffers/docs/proto3#reserved
+    /// Parse a message [reserved] fields
     /// We currently do not parse reserved, we simply fast forward to the end of the statement
     /// For example:
     ///
     /// ```proto
     /// reserved 2, 15, 9 to 11;
     /// ```
+    ///
+    /// [reserved] https://developers.google.com/protocol-buffers/docs/proto3#reserved
     fn parse_reserved(&mut self) -> Result<(), ParseError> {
         self.tokenizer.skip_until_token(Token::Semi)?;
         Ok(())
     }
 
-    /// Parse a message extension
-    /// see https://developers.google.com/protocol-buffers/docs/proto#extensions
+    /// Parse a message [extension]
     /// We currently do not parse extensions, we simply fast forward to the end of the statement
     /// For example:
     ///
     /// ```proto
     /// extensions 100 to 199;
     /// ```
+    ///
+    /// [extension] https://developers.google.com/protocol-buffers/docs/proto#extensions
     fn parse_extensions(&mut self) -> Result<(), ParseError> {
         self.tokenizer.skip_until_token(Token::Semi)?;
         Ok(())
