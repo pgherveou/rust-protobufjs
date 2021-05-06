@@ -31,7 +31,7 @@ impl Parser {
         }
     }
 
-    /// Parse the given file.
+    /// Parse the given file, and it's import dependencies
     /// The result will be merged into the root namespace of the parser
     pub fn parse_file(&mut self, file_name: PathBuf) -> Result<(), ParseFileError> {
         if self.parsed_files.contains(&file_name) {
@@ -47,6 +47,7 @@ impl Parser {
 
         let file_parser = FileParser::new(file_name, content.chars());
         let namespace = file_parser.parse(&content)?;
+
         for file in namespace.imports.iter() {
             let import_path = self.root_dir.join(file);
             self.parse_file(import_path)?;

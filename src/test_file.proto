@@ -2,11 +2,6 @@ syntax = "proto3";
 
 package pb.hello;
 
-option go_package = "hello";
-option java_package = "com.hello.service.api.v1";
-option java_multiple_files = true;
-option py_generic_services = true;
-
 service HelloWorld {
     rpc SayHello (SayHelloRequest) returns (SayHelloResponse) {}
     rpc LotsOfReplies(SayHelloRequest) returns (stream SayHelloResponse) {}

@@ -7,15 +7,16 @@ use std::collections::HashMap;
 #[derive(Debug, Serialize)]
 pub struct Message {
     /// A map of name => fields
-    fields: HashMap<String, Field>,
+    pub fields: HashMap<String, Field>,
 
     /// A map of name => oneof
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    oneofs: HashMap<String, Oneof>,
+    pub oneofs: HashMap<String, Oneof>,
 
-    /// A map of name => nested message or enum
+    /// A map of name => [nested] message or enum
+    /// [nested] https://developers.google.com/protocol-buffers/docs/proto3#nested
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    nested: HashMap<String, NestedObject>,
+    pub nested: HashMap<String, NestedObject>,
 }
 
 impl Message {
@@ -99,19 +100,19 @@ pub enum FieldRule {
 #[derive(Debug, Serialize)]
 pub struct Field {
     // The field Id
-    id: u32,
+    pub id: u32,
 
     // For map the type of the key
     #[serde(rename = "keyType", skip_serializing_if = "Option::is_none")]
-    key_type: Option<String>,
+    pub key_type: Option<String>,
 
     // the type of the field
     #[serde(rename = "type")]
-    type_name: String,
+    pub type_name: String,
 
     // the field rule associated with this type
     #[serde(skip_serializing_if = "Option::is_none")]
-    rule: Option<FieldRule>,
+    pub rule: Option<FieldRule>,
 }
 
 impl Field {
