@@ -1,12 +1,19 @@
 use crate::position::Position;
 
+/// A Peekable iterator that keeps track of the current position
 pub struct IteratorWithPosition<I: Iterator> {
+    /// The underlying iterator
     iter: I,
+
+    // The current position
     position: Position,
+
+    // Peeked iterator item if any
     peeked: Option<Option<I::Item>>,
 }
 
 impl<I: Iterator<Item = char>> IteratorWithPosition<I> {
+    /// Returns a new IteratorWithPosition
     pub fn new(iter: I) -> Self {
         Self {
             iter,
@@ -15,6 +22,7 @@ impl<I: Iterator<Item = char>> IteratorWithPosition<I> {
         }
     }
 
+    /// Returns the next iterator item if the given closure returns true.
     pub fn next_if(&mut self, func: impl FnOnce(&I::Item) -> bool) -> Option<I::Item> {
         match self.next() {
             Some(matched) if func(&matched) => Some(matched),
@@ -25,6 +33,7 @@ impl<I: Iterator<Item = char>> IteratorWithPosition<I> {
         }
     }
 
+    /// Returns a copy of the current position
     pub fn current_position(&self) -> Position {
         let mut position = self.position.clone();
         if let Some(Some(c)) = self.peeked {

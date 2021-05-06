@@ -3,25 +3,30 @@ use crate::position::Position;
 use crate::token::Token;
 use crate::{iterator_with_position::IteratorWithPosition, message::FieldRule};
 
+/// A tokenizer reads from the `chars` iterator and produce `Token`
 pub struct Tokenizer<I: Iterator> {
+    /// The chars iterators
     chars: IteratorWithPosition<I>,
+
+    /// The current comment if any
     comment: Option<String>,
 }
 
 impl<I: Iterator<Item = char>> Tokenizer<I> {
-    pub fn new(iter: I) -> Self {
-        let chars = IteratorWithPosition::new(iter);
-
+    /// Returns a new Tokenizer for the given char iterator
+    pub fn new(chars: I) -> Self {
         Self {
-            chars,
+            chars: IteratorWithPosition::new(chars),
             comment: None,
         }
     }
 
+    /// Returns the current position
     pub fn current_position(&self) -> Position {
         self.chars.current_position()
     }
 
+    /// Skip tokens until it matches the passed token
     pub fn skip_until_token(&mut self, token: Token) -> Result<(), TokenError> {
         loop {
             if self.next()? == token {
@@ -30,6 +35,7 @@ impl<I: Iterator<Item = char>> Tokenizer<I> {
         }
     }
 
+    /// Return the string delimited by the specified char
     fn read_delimited_string(&mut self, end_delimiter: char) -> Result<String, TokenError> {
         let mut vec = Vec::new();
         let mut found_escape_char = false;
@@ -75,7 +81,8 @@ impl<I: Iterator<Item = char>> Tokenizer<I> {
         }
     }
 
-    fn read_word(&mut self, start: char) -> Token {
+    /// Return the next identifier starting with given char
+    fn read_identifier(&mut self, start: char) -> Token {
         let mut vec = vec![start];
 
         while let Some(char) = self.chars.next_if(|c| match c {
@@ -106,10 +113,11 @@ impl<I: Iterator<Item = char>> Tokenizer<I> {
             "syntax" => Token::Syntax,
             "oneof" => Token::Oneof,
             "enum" => Token::Enum,
-            _ => Token::Word(word),
+            _ => Token::Identifier(word),
         }
     }
 
+    /// Return the next comment
     fn read_comment(&mut self) -> Result<String, TokenError> {
         let char = self.chars.next().unwrap_or(' ');
 
@@ -148,11 +156,12 @@ impl<I: Iterator<Item = char>> Tokenizer<I> {
         }
     }
 
+    /// Returns the next token
     pub fn next(&mut self) -> Result<Token, TokenError> {
         match self.chars.next() {
             None => Ok(Token::EOF),
 
-            Some('=') => Ok(Token::Equal),
+            Some('=') => Ok(Token::Eq),
             Some(';') => Ok(Token::Semi),
             Some('{') => Ok(Token::LBrace),
             Some('}') => Ok(Token::RBrace),
@@ -174,72 +183,65 @@ impl<I: Iterator<Item = char>> Tokenizer<I> {
             }
 
             // comment
-            Some('/') => match self.read_comment() {
-                Ok(comment) => {
-                    self.comment = Some(comment);
-                    self.next()
-                }
-                Err(err) => Err(err),
-            },
+            Some('/') => {
+                self.comment = Some(self.read_comment()?);
+                self.next()
+            }
 
             // Quoted string
-            Some(c @ '\'') | Some(c @ '"') => match self.read_delimited_string(c) {
-                Ok(str) => {
-                    return Ok(Token::QuotedString(str));
-                }
-                Err(err) => Err(err),
-            },
+            Some(c @ '\'') | Some(c @ '"') => Ok(Token::String(self.read_delimited_string(c)?)),
 
             // word
-            Some(c) => Ok(self.read_word(c)),
+            Some(c) => Ok(self.read_identifier(c)),
         }
     }
 }
-/*
+
 #[cfg(test)]
 mod tests {
-    use crate::token::Token;
     use crate::tokenizer::Tokenizer;
+    use crate::{parse_error::TokenError, token::Token};
 
     #[test]
-    fn it_should_parse_single_quote_string() {
-        let mut tokenizer = Tokenizer::new("'hello world'".to_string());
+    fn it_should_parse_single_quote_string() -> Result<(), TokenError> {
+        let mut tokenizer = Tokenizer::new("'hello world'".chars());
+        assert_eq!(tokenizer.next()?, Token::String("hello world".to_string()));
+        Ok(())
+    }
 
+    #[test]
+    fn it_should_parse_double_quote_string() -> Result<(), TokenError> {
+        let mut tokenizer = Tokenizer::new(r#""hello world""#.chars());
         assert_eq!(
-            tokenizer.next(),
-            Ok(Token::QuotedString("hello world".to_string()))
+            tokenizer.next()?,
+            Token::Identifier("hello world".to_string())
         );
+        Ok(())
     }
 
     #[test]
-    fn it_should_parse_double_quote_string() {
-        let mut tokenizer = Tokenizer::new(r#""hello world""#.to_string());
-
-        assert_eq!(tokenizer.next(), Ok(Token::Word("hello world".to_string())));
-    }
-
-    #[test]
-    fn it_should_parse_escaped_string() {
-        let mut tokenizer = Tokenizer::new("'hello \\' \n world'".to_string());
-
+    fn it_should_parse_escaped_string() -> Result<(), TokenError> {
+        let mut tokenizer = Tokenizer::new("'hello \\' \n world'".chars());
         assert_eq!(
-            tokenizer.next(),
-            Ok(Token::QuotedString("hello ' \n world".to_string()))
+            tokenizer.next()?,
+            Token::String("hello ' \n world".to_string())
         );
+        Ok(())
     }
 
     #[test]
-    fn it_should_parse_double_slash_comment() {
-        let mut tokenizer = Tokenizer::new("// hello world".to_string());
-        tokenizer.next().unwrap();
+    fn it_should_parse_double_slash_comment() -> Result<(), TokenError> {
+        let mut tokenizer = Tokenizer::new("// hello world".chars());
+        tokenizer.next()?;
         assert_eq!(tokenizer.comment, Some(" hello world".to_string()));
+        Ok(())
     }
 
     #[test]
-    fn it_should_parse_slash_star_comment() {
-        let mut tokenizer = Tokenizer::new("/* hello world */".to_string());
-        tokenizer.next().unwrap();
+    fn it_should_parse_slash_star_comment() -> Result<(), TokenError> {
+        let mut tokenizer = Tokenizer::new("/* hello world */".chars());
+        tokenizer.next()?;
         assert_eq!(tokenizer.comment, Some(" hello world ".to_string()));
+        Ok(())
     }
 }
-*/

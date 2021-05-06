@@ -1,6 +1,6 @@
 use glob::glob;
 use protobuf::parser::Parser;
-use std::{collections::HashSet, path::PathBuf};
+use std::collections::HashSet;
 
 fn main() {
     match run() {
@@ -10,7 +10,8 @@ fn main() {
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let root_dir = PathBuf::from("/Users/pgherveou/src/idl/protos");
+    let home = dirs::home_dir().unwrap();
+    let root_dir = home.join("src/idl/protos");
 
     let mut ignored_files = HashSet::new();
     ignored_files.insert(root_dir.join("validate/validate.proto"));
@@ -18,10 +19,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     ignored_files.insert(root_dir.join("google/api/annotations.proto"));
     ignored_files.insert(root_dir.join("google/api/expr/v1alpha1/syntax.proto"));
 
+    let pattern = root_dir.join("pb/**/*.proto");
+    let entries = glob(pattern.to_string_lossy().as_ref())?;
+
     let mut parser = Parser::new(root_dir, ignored_files);
-
-    let entries = glob("/Users/pgherveou/src/idl/protos/pb/**/*.proto")?;
-
     for entry in entries {
         let file_name = entry?;
         parser.parse_file(file_name)?;

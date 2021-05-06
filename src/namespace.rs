@@ -1,39 +1,47 @@
+use crate::{
+    message::{Enum, Message},
+    service::Service,
+};
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use std::{
     collections::{HashMap, HashSet},
     ptr::NonNull,
 };
 
-use crate::{
-    message::{Enum, Message},
-    service::Service,
-};
-
+/// A Namespace represents a serialized proto package
 #[derive(Serialize, Debug)]
 #[serde(remote = "Self")]
 pub struct Namespace {
-    #[serde(skip_serializing, skip_deserializing)]
+    /// The namespace's full name: e.g pb.foo.bar
+    #[serde(skip_serializing)]
     pub fullname: String,
 
-    #[serde(skip_serializing, skip_deserializing)]
+    /// List of import statements used to resolve this package's dependencies
+    #[serde(skip_serializing)]
     pub imports: HashSet<String>,
 
-    #[serde(skip_serializing, skip_deserializing)]
+    /// A pointer to the parent's namespace
+    #[serde(skip_serializing)]
     parent: Option<NonNull<Namespace>>,
 
+    /// A list of nested namespaces
     #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
     nested: HashMap<String, Box<Namespace>>,
 
+    /// A map of name => Service defined in this namespace
     #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
     services: HashMap<String, Service>,
 
+    /// A map of name => Message defined in this namespace
     #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
     messages: HashMap<String, Message>,
 
+    /// A map of name => Enum defined in this namespace
     #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
     enums: HashMap<String, Enum>,
 }
 
+/// Wrap the namespace into a wrapper struct to match the serialization format of protobuf.js
 impl Serialize for Namespace {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -59,6 +67,7 @@ impl Serialize for Namespace {
 }
 
 impl Namespace {
+    /// Returns a new namespace
     pub fn new(fullname: &str, parent: Option<NonNull<Namespace>>) -> Box<Namespace> {
         Box::new(Self {
             fullname: fullname.to_string(),
@@ -71,44 +80,39 @@ impl Namespace {
         })
     }
 
+    /// Returns a root namespace with no parent
     pub fn root() -> Box<Namespace> {
         Namespace::new("", None)
     }
 
-    pub fn as_ptr(&mut self) -> Option<NonNull<Namespace>> {
-        NonNull::new(self)
-    }
-
+    /// Add an import statement
     pub fn add_import(&mut self, import: String) {
         self.imports.insert(import);
     }
 
+    /// Add a message
     pub fn add_message(&mut self, name: String, message: Message) {
         self.messages.insert(name, message);
     }
 
+    /// Add an enum
     pub fn add_enum(&mut self, name: String, e: Enum) {
         self.enums.insert(name, e);
     }
 
-    pub fn add_service(&mut self, service: Service) {
-        self.services.insert(service.name.to_string(), service);
+    /// Add an service
+    pub fn add_service(&mut self, name: String, service: Service) {
+        self.services.insert(name, service);
     }
 
-    fn or_insert_with_child(&mut self, name: &str, fullname: &str) -> &mut Box<Namespace> {
-        let parent = NonNull::new(self);
-        self.nested
-            .entry(name.to_string())
-            .or_insert_with(|| Namespace::new(fullname, parent))
-    }
-
+    /// Get a reference to the parent
     pub fn parent(&self) -> Option<&Namespace> {
+        // Should be ok, because if this namespace has a parent,
+        // then the parent must be currently borrowed so that child could be borrowed
         self.parent.as_ref().map(|x| unsafe { x.as_ref() })
-        // Should be ok, because if this Node has a parent,
-        // then the parent must be currently borrowed
-        // so that self could be borrowed
     }
 
+    /// Find the child for the given path
     pub fn child(&self, path: &str) -> Option<&Namespace> {
         let mut paths = path.split(".");
         let mut ptr = self;
@@ -123,7 +127,9 @@ impl Namespace {
         Some(ptr)
     }
 
-    pub fn append_child<'a>(&mut self, child: Box<Namespace>) {
+    /// Append a child to the current namespace.
+    /// If there is already a namespace with the same name, it will be merged with child
+    pub fn append_child(&mut self, child: Box<Namespace>) {
         let mut paths = child.fullname.split(".");
         let mut fullname = self.fullname.to_string();
         let mut ptr = self;
@@ -133,23 +139,36 @@ impl Namespace {
                 fullname.push('.');
             }
             fullname.push_str(name);
-            ptr = ptr.or_insert_with_child(name, fullname.as_str());
+            ptr = ptr.get_or_insert_with_child(name, fullname.as_str());
         }
 
         ptr.merge_with(child);
     }
 
+    /// Get the child with the specified name or insert a new one at this location
+    fn get_or_insert_with_child(&mut self, name: &str, fullname: &str) -> &mut Box<Namespace> {
+        let parent = NonNull::new(self);
+        self.nested
+            .entry(name.to_string())
+            .or_insert_with(|| Namespace::new(fullname, parent))
+    }
+
+    /// Merge the `other` namespace into self
     fn merge_with(&mut self, other: Box<Namespace>) {
         let Namespace {
             messages,
             enums,
             services,
+            imports,
+            nested,
             ..
         } = *other;
 
+        self.nested.extend(nested);
         self.messages.extend(messages);
         self.enums.extend(enums);
         self.services.extend(services);
+        self.imports.extend(imports);
     }
 }
 
