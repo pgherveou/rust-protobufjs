@@ -1,5 +1,5 @@
 use crate::{
-    message::{Enum, Message},
+    message::{Enum, Message, Type},
     service::Service,
 };
 use serde::{ser::SerializeStruct, Serialize, Serializer};
@@ -32,13 +32,9 @@ pub struct Namespace {
     #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
     services: HashMap<String, Service>,
 
-    /// A map of name => Message defined in this namespace
+    /// A map of name => Type (Enum or Message) defined in this namespace
     #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
-    messages: HashMap<String, Message>,
-
-    /// A map of name => Enum defined in this namespace
-    #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
-    enums: HashMap<String, Enum>,
+    types: HashMap<String, Type>,
 }
 
 /// Wrap the namespace into a wrapper struct to match the serialization format of protobuf.js
@@ -73,8 +69,7 @@ impl Namespace {
             fullname: fullname.to_string(),
             imports: HashSet::new(),
             nested: HashMap::new(),
-            messages: HashMap::new(),
-            enums: HashMap::new(),
+            types: HashMap::new(),
             services: HashMap::new(),
             parent,
         })
@@ -92,12 +87,12 @@ impl Namespace {
 
     /// Add a message
     pub fn add_message(&mut self, name: String, message: Message) {
-        self.messages.insert(name, message);
+        self.types.insert(name, Type::Message(message));
     }
 
     /// Add an enum
     pub fn add_enum(&mut self, name: String, e: Enum) {
-        self.enums.insert(name, e);
+        self.types.insert(name, Type::Enum(e));
     }
 
     /// Add an service
@@ -156,8 +151,7 @@ impl Namespace {
     /// Merge the `other` namespace into self
     fn merge_with(&mut self, other: Box<Namespace>) {
         let Namespace {
-            messages,
-            enums,
+            types,
             services,
             imports,
             nested,
@@ -165,8 +159,7 @@ impl Namespace {
         } = *other;
 
         self.nested.extend(nested);
-        self.messages.extend(messages);
-        self.enums.extend(enums);
+        self.types.extend(types);
         self.services.extend(services);
         self.imports.extend(imports);
     }

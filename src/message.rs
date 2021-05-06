@@ -16,7 +16,7 @@ pub struct Message {
     /// A map of name => [nested] message or enum
     /// [nested] https://developers.google.com/protocol-buffers/docs/proto3#nested
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub nested: HashMap<String, NestedObject>,
+    pub nested: HashMap<String, Type>,
 }
 
 impl Message {
@@ -36,12 +36,12 @@ impl Message {
 
     /// Add a nested enum
     pub fn add_nested_enum(&mut self, name: String, e: Enum) {
-        self.nested.insert(name, NestedObject::Enum(e));
+        self.nested.insert(name, Type::Enum(e));
     }
 
     /// Add a nested message
     pub fn add_nested_message(&mut self, name: String, message: Message) {
-        self.nested.insert(name, NestedObject::Message(message));
+        self.nested.insert(name, Type::Message(message));
     }
 
     /// Add a message field
@@ -50,10 +50,10 @@ impl Message {
     }
 }
 
-/// NestedObject defines a nested proto object
+/// Type can be a message or enum
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
-pub enum NestedObject {
+pub enum Type {
     Message(Message),
     Enum(Enum),
 }
