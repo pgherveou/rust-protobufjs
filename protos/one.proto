@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+import "two.proto";
+
+package pb.example.one;
+
+message FieldDescriptorProto {
+  enum Label {    
+    LABEL_OPTIONAL      = 1;
+    LABEL_REQUIRED      = 2;
+    LABEL_REPEATED      = 3;
+  };
+
+  Label label = 4;  
+}

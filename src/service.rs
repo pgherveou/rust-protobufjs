@@ -1,5 +1,5 @@
 use serde::Serialize;
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap};
 
 /// utility function used by serde skip_serializing_if directive
 /// is_false is used to remove false boolean from the serialized output
@@ -12,7 +12,7 @@ fn is_false(value: &bool) -> bool {
 #[derive(Debug, Serialize)]
 pub struct Service {
     /// The list of rpc methods defined by this service
-    methods: HashMap<String, Rpc>,
+    pub methods: HashMap<String, Rpc>,
 }
 
 impl Service {
@@ -37,14 +37,14 @@ pub struct Rpc {
     // #[serde(skip_serializing, skip_deserializing)]
     // name: String,
     /// The rpc request type
-    request_type: String,
+    pub request_type: RefCell<String>,
 
     /// Define whether the rpc request is streaming or not
     #[serde(skip_serializing_if = "is_false")]
     request_stream: bool,
 
     /// The rpc response type
-    response_type: String,
+    pub response_type: RefCell<String>,
 
     /// Define whether the rpc response is streaming or not
     #[serde(skip_serializing_if = "is_false")]
@@ -60,10 +60,9 @@ impl Rpc {
         response_stream: bool,
     ) -> Self {
         Self {
-            // name,
-            request_type,
+            request_type: RefCell::new(request_type),
             request_stream,
-            response_type,
+            response_type: RefCell::new(response_type),
             response_stream,
         }
     }

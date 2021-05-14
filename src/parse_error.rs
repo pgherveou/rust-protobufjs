@@ -60,6 +60,8 @@ pub enum ParseFileError {
 
     #[error("{0}")]
     ParseError(String),
+
+    FileAlreadyParsed,
 }
 
 impl ParseFileError {

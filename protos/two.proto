@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package pb.example.two;
+
+message Two {
+  string two_field = 1;
+
+  message TwoNested {
+      string two_nested_field = 1;
+  }
+}
+

@@ -9,7 +9,7 @@ pub struct Tokenizer<I: Iterator> {
     chars: IteratorWithPosition<I>,
 
     /// The current comment if any
-    comment: Option<String>,
+    pub comment: Option<String>,
 }
 
 impl<I: Iterator<Item = char>> Tokenizer<I> {

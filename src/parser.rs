@@ -6,55 +6,79 @@ use crate::{
     token::Token,
     tokenizer::Tokenizer,
 };
-use std::{collections::HashSet, path::PathBuf, vec};
+use std::{collections::HashMap, path::PathBuf, vec};
 
 /// The parser parse files and populate the root namespace
 pub struct Parser {
-    /// The root namespace that will receive child namespace parsed in each file
-    pub root: Box<Namespace>,
-
     /// The root directory used to resolve import statements
     root_dir: PathBuf,
 
-    /// List of parsed files, used to do some bookeeping when resolving imports
-    parsed_files: HashSet<PathBuf>,
+    /// List of parsed files
+    parsed_files: HashMap<PathBuf, Box<Namespace>>,
 }
 
 impl Parser {
     /// Returns a new parser with the given root directory and a list of files we want to ignore    
-    pub fn new(root_dir: PathBuf, ignored_files: HashSet<PathBuf>) -> Self {
+    pub fn new(root_dir: PathBuf, parsed_files: HashMap<PathBuf, Box<Namespace>>) -> Self {
         Self {
             root_dir,
-            root: Namespace::root(),
-            // populate the parsed_files with the passed ignored_files to treat them as already parsed
-            parsed_files: ignored_files,
+            parsed_files: parsed_files,
         }
     }
 
     /// Parse the given file, and it's import dependencies
     /// The result will be merged into the root namespace of the parser
     pub fn parse_file(&mut self, file_name: PathBuf) -> Result<(), ParseFileError> {
-        if self.parsed_files.contains(&file_name) {
+        if self.parsed_files.contains_key(&file_name) {
             return Ok(());
         }
 
-        self.parsed_files.insert(file_name.clone());
-
         let content = match std::fs::read_to_string(&file_name) {
             Ok(r) => r,
-            Err(error) => return Err(ParseFileError::Read(file_name, error)),
+            Err(error) => return Err(ParseFileError::Read(file_name.clone(), error)),
         };
 
-        let file_parser = FileParser::new(file_name, content.chars());
-        let namespace = file_parser.parse(&content)?;
+        // create the parser
+        let file_parser = FileParser::new(file_name.clone(), content.chars());
 
-        for file in namespace.imports.iter() {
-            let import_path = self.root_dir.join(file);
-            self.parse_file(import_path)?;
+        // parse the namespace
+        let ns = file_parser.parse(&content)?;
+
+        // get the list of imported files and parse them
+        for import in ns.imports.iter() {
+            let file_name = self.root_dir.join(import);
+            self.parse_file(file_name)?;
         }
 
-        self.root.append_child(namespace);
-        Ok(())
+        self.parsed_files.insert(file_name, ns);
+        return Ok(());
+    }
+
+    /// Build the namespace graph by consuming all the parsed files
+    pub fn build_root(self) -> Box<Namespace> {
+        let Parser {
+            root_dir,
+            parsed_files,
+            ..
+        } = self;
+
+        // normalize all files
+        for child in parsed_files.values() {
+            let dependencies = child.imports.iter().map(|f| {
+                let file_path = root_dir.join(f);
+                parsed_files[&file_path].as_ref()
+            });
+
+            child.normalize_types(dependencies.collect())
+        }
+
+        // build the namespace tree
+        let mut root = Namespace::empty();
+        for child in parsed_files.into_values() {
+            root.append_child(child)
+        }
+
+        return root;
     }
 }
 
@@ -76,7 +100,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
         Self {
             file_name,
             tokenizer: Tokenizer::new(iter),
-            namespace: Namespace::root(),
+            namespace: Namespace::empty(),
         }
     }
 
@@ -146,11 +170,16 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     ///
     /// [package] https://developers.google.com/protocol-buffers/docs/proto3#packages
     fn parse_package(&mut self) -> Result<(), ParseError> {
-        if !self.namespace.fullname.is_empty() {
+        if !self.namespace.path.is_empty() {
             return Err(ParseError::PackageAlreadySet);
         }
 
-        self.namespace.fullname = self.read_identifier()?;
+        self.namespace.path = self
+            .read_identifier()?
+            .split('.')
+            .map(|s| s.into())
+            .collect();
+
         self.expect_token(Token::Semi)?;
         Ok(())
     }

@@ -1,6 +1,7 @@
 use derive_more::Display;
+use phf::phf_set;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap};
 
 /// Message defines a proto [message]
 /// [message] https://developers.google.com/protocol-buffers/docs/proto3#simple
@@ -29,6 +30,21 @@ impl Message {
         }
     }
 
+    /// returns true if the message contains the given path
+    pub fn has<'a, 'b>(&'a self, mut paths: impl Iterator<Item = &'b str>) -> bool {
+        let mut ptr = self;
+
+        while let Some(name) = paths.next() {
+            match ptr.nested.get(name) {
+                None => return false,
+                Some(Type::Message(msg)) => ptr = msg,
+                Some(Type::Enum(_)) => return paths.next().is_none(),
+            }
+        }
+
+        return true;
+    }
+
     /// Add a oneof field
     pub fn add_oneof(&mut self, name: String, oneof: Oneof) {
         self.oneofs.insert(name, oneof);
@@ -36,6 +52,7 @@ impl Message {
 
     /// Add a nested enum
     pub fn add_nested_enum(&mut self, name: String, e: Enum) {
+        println!("add nested enum {}", name);
         self.nested.insert(name, Type::Enum(e));
     }
 
@@ -48,7 +65,27 @@ impl Message {
     pub fn add_field(&mut self, name: String, field: Field) {
         self.fields.insert(name, field);
     }
+
+    pub fn messages_iter<'a>(&'a self) -> Box<dyn Iterator<Item = &Message> + 'a> {
+        let iter = self
+            .nested
+            .values()
+            .flat_map(|v| v.as_message())
+            .flat_map(|msg| msg.messages_iter())
+            .chain([self]);
+
+        return Box::new(iter);
+    }
 }
+
+/// scalars defines all the possible [scalar value types]
+/// [scalar value types] https://developers.google.com/protocol-buffers/docs/overview#scalar
+pub static SCALARS: phf::Set<&'static str> = phf_set! {
+    "double", "float",
+    "int32", "int64", "uint32", "uint64", "sint32", "sint64",
+    "fixed32", "fixed64", "sfixed32", "sfixed64",
+    "bool", "string", "bytes"
+};
 
 /// Type can be a message or enum
 #[derive(Debug, Serialize)]
@@ -56,6 +93,29 @@ impl Message {
 pub enum Type {
     Message(Message),
     Enum(Enum),
+}
+
+impl Type {
+    pub fn has<'a, 'b>(&'a self, paths: impl Iterator<Item = &'b str>) -> bool {
+        match self {
+            Type::Enum(_) => false,
+            Type::Message(msg) => msg.has(paths),
+        }
+    }
+
+    pub fn get<'a, 'b>(&'a self, key: &str) -> Option<&Type> {
+        match self {
+            Type::Enum(_) => None,
+            Type::Message(msg) => msg.nested.get(key),
+        }
+    }
+
+    pub fn as_message(&self) -> Option<&Message> {
+        match self {
+            Type::Enum(_) => None,
+            Type::Message(msg) => Some(msg),
+        }
+    }
 }
 
 /// Enum defines a proto [emum]
@@ -97,7 +157,7 @@ pub enum FieldRule {
 
 /// Field represents a proto message [field]
 /// [field] https://developers.google.com/protocol-buffers/docs/proto#specifying_field_types
-#[derive(Debug, Serialize)]
+#[derive(Serialize, Debug)]
 pub struct Field {
     // The field Id
     pub id: u32,
@@ -108,7 +168,7 @@ pub struct Field {
 
     // the type of the field
     #[serde(rename = "type")]
-    pub type_name: String,
+    pub type_name: RefCell<String>,
 
     // the field rule associated with this type
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -125,7 +185,7 @@ impl Field {
     ) -> Field {
         Self {
             id,
-            type_name,
+            type_name: RefCell::new(type_name),
             rule,
             key_type,
         }
