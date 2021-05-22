@@ -1,6 +1,7 @@
-use crate::{message::FieldRule, parse_error::ParseError};
+use crate::{field::FieldRule, parse_error::ParseError};
 use derive_more::Display;
 
+// TODO add lifetime and take &'a str instead of String
 #[derive(Display, Debug, PartialEq)]
 pub enum Token {
     #[display(fmt = "EOF")]
@@ -11,6 +12,9 @@ pub enum Token {
 
     #[display(fmt = ";")]
     Semi,
+
+    #[display(fmt = ":")]
+    Colon,
 
     #[display(fmt = "{{")]
     LBrace,

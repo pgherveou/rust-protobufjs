@@ -6,9 +6,6 @@ use thiserror::Error;
 #[derive(Error, Debug, PartialEq)]
 #[error("...")]
 pub enum TokenError {
-    #[error("Unexpected end of file")]
-    EOF,
-
     #[error("Invalid delimiter {0}")]
     InvalidStringDelimiter(char),
 
@@ -23,6 +20,9 @@ pub enum TokenError {
 #[derive(Error, Debug, PartialEq)]
 #[error("...")]
 pub enum ParseError {
+    #[error("Unexpected end of file")]
+    EOF,
+
     #[error("proto version {0} not supported")]
     ProtoSyntaxNotSupported(String),
 
@@ -51,12 +51,31 @@ pub enum ParseError {
     TokenError(#[from] TokenError),
 }
 
+#[derive(Error, Debug)]
+#[error("...")]
+pub enum ResolveError {
+    #[error("Failed to resolve field: {type_name} {field}")]
+    UnresolvedField { type_name: String, field: String },
+
+    #[error("Failed to resolve rpc type: {_0}")]
+    UnresolvedRpcType(String),
+}
+
+impl ResolveError {
+    pub fn to_parse_file_error(self, path: PathBuf) -> ParseFileError {
+        return ParseFileError::Resolve(path, self);
+    }
+}
+
 /// ParseFileError defines an error generated while reading and parsing a file
 #[derive(Error, Debug)]
 #[error("...")]
 pub enum ParseFileError {
     #[error("Failed to read file {0}. {1}")]
     Read(PathBuf, io::Error),
+
+    #[error("File {0}, {1}")]
+    Resolve(PathBuf, ResolveError),
 
     #[error("{0}")]
     ParseError(String),

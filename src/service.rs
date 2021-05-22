@@ -41,14 +41,17 @@ pub struct Rpc {
 
     /// Define whether the rpc request is streaming or not
     #[serde(skip_serializing_if = "is_false")]
-    request_stream: bool,
+    pub request_stream: bool,
 
     /// The rpc response type
     pub response_type: RefCell<String>,
 
     /// Define whether the rpc response is streaming or not
     #[serde(skip_serializing_if = "is_false")]
-    response_stream: bool,
+    pub response_stream: bool,
+
+    // a list of options associated with this method
+    pub options: Vec<Vec<String>>,
 }
 
 impl Rpc {
@@ -58,12 +61,14 @@ impl Rpc {
         request_stream: bool,
         response_type: String,
         response_stream: bool,
+        options: Vec<Vec<String>>,
     ) -> Self {
         Self {
             request_type: RefCell::new(request_type),
             request_stream,
             response_type: RefCell::new(response_type),
             response_stream,
+            options,
         }
     }
 }

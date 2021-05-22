@@ -4,12 +4,129 @@ import "two.proto";
 
 package pb.example.one;
 
-message FieldDescriptorProto {
-  enum Label {    
-    LABEL_OPTIONAL      = 1;
-    LABEL_REQUIRED      = 2;
-    LABEL_REPEATED      = 3;
-  };
+message One {
+  // scalar field
+  string one_str = 1;
 
-  Label label = 4;  
+  // namespace message
+  OneOther one_other = 2;
+
+  // namespace message using partial qualified name
+  one.OneOther one_other_2 = 21;
+
+  // namespace message using partial qualified name (depth = 2)
+  example.one.OneOther one_other_3 = 22;
+
+  // namespace message using fully qualified name
+  pb.example.one.OneOther one_other_4 = 23;
+  
+  // namespace enum
+  // try One.OneEnum
+  // then try OneEnum
+  OneEnum one_enum = 3;
+
+  // enum OneEnum {
+  //   FOO = 1;
+  // }
+
+  // inner message
+  OneInner one_inner = 4;
+
+  // inner message using partial qualified name
+  One.OneInner one_inner_2 = 41;
+
+  // inner message using partial qualified name (depth = 2)
+  one.One.OneInner one_inner_3 = 42;
+
+  // inner message using partial qualified name (depth = 3)
+  example.one.One.OneInner one_inner_4x = 43;
+  
+  // inner message using fully qualified name
+  example.one.One.OneInner one_inner_5x = 44;
+
+  // inner enum
+  OneInnerEnum one_inner_enumx = 5;
+
+  // namespace two message partial qualified
+  two.Two two = 6;
+
+  // namespace two partial qualified message
+  example.two.Two two_2 = 61;
+
+  // namespace two fully qualified message
+  pb.example.two.Two two_3 = 62;
+
+  // namespace two nested message partial qualified
+  two.Two.TwoNested two_nested = 7;
+
+  // namespace two nested message partial qualified
+  example.two.Two.TwoNested two_nested_2 = 71;
+  
+  // namespace two nested fully qualified
+  pb.example.two.Two.TwoNested two_nested_3 = 72;
+
+  // inner inner message
+  OneInner.OneInnerInner one_inner_inner = 8;
+  
+  // inner inner other message
+  OneInnerOther.OneInnerOtherInner one_inner_other_inner = 89;
+
+  message OneInner {
+    // scalar field
+    string one_str = 1;
+
+    // namespace message
+    OneOther one_other = 2;
+
+    // namespace message using partial qualified name
+    one.OneOther one_other_2 = 21;
+
+    // namespace message using partial qualified name (depth = 2)
+    example.one.OneOther one_other_3 = 22;
+
+    // namespace message using fully qualified name
+    pb.example.one.OneOther one_other_4 = 23;
+
+    // namespace enum
+    OneEnum xone_enum = 3;
+
+    // inner message
+    OneInnerOther one_inner = 4;
+
+    // inner message using partial qualified name
+    One.OneInnerOther one_inner_2 = 41;
+
+    // inner message using partial qualified name (depth = 2)
+    one.One.OneInnerOther one_inner_3 = 42;
+
+    // inner message using partial qualified name (depth = 3)
+    example.one.One.OneInnerOther one_inner_4 = 43;
+    
+    // inner message using fully qualified name
+    pb.example.one.One.OneInnerOther one_inner_5 = 44;
+
+    // inner enum
+    OneInnerEnum one_inner_enum = 5;
+
+    message OneInnerInner {
+      message OneInnerInnerInner {
+        One.OneInnerOther test = 1;
+      }
+    }
+  }
+
+  message OneInnerOther {
+    message OneInnerOtherInner {
+    }
+  }
+
+  enum OneInnerEnum {
+    ONE = 0;
+  }
+}
+
+message OneOther {}
+
+enum OneEnum {    
+    ONE = 0;
 }

@@ -1,7 +1,15 @@
-use derive_more::Display;
-use phf::phf_set;
+use crate::{
+    field::Field,
+    into_path::ToPath,
+    namespace::Namespace,
+    oneof::Oneof,
+    parse_error::ResolveError,
+    r#enum::Enum,
+    r#type::{Resolver, Type},
+    scalar::SCALARS,
+};
 use serde::Serialize;
-use std::{cell::RefCell, collections::HashMap};
+use std::collections::HashMap;
 
 /// Message defines a proto [message]
 /// [message] https://developers.google.com/protocol-buffers/docs/proto3#simple
@@ -52,7 +60,6 @@ impl Message {
 
     /// Add a nested enum
     pub fn add_nested_enum(&mut self, name: String, e: Enum) {
-        println!("add nested enum {}", name);
         self.nested.insert(name, Type::Enum(e));
     }
 
@@ -66,148 +73,78 @@ impl Message {
         self.fields.insert(name, field);
     }
 
-    pub fn messages_iter<'a>(&'a self) -> Box<dyn Iterator<Item = &Message> + 'a> {
-        let iter = self
-            .nested
-            .values()
-            .flat_map(|v| v.as_message())
-            .flat_map(|msg| msg.messages_iter())
-            .chain([self]);
+    /// Resolve and update all the types referenced inside this message to their absolute path
+    /// We iterate through the fields and the nested messages
+    pub fn resolve_types(
+        &self,
+        dependencies: &Vec<&Namespace>,
+        resolve_path: Vec<(&str, &HashMap<String, Type>)>,
+    ) -> Result<(), ResolveError> {
+        'fields: for (field_name, field) in self.fields.iter() {
+            let mut type_name = field.type_name.borrow_mut();
 
-        return Box::new(iter);
-    }
-}
+            // Skip scalars
+            if SCALARS.contains(type_name.as_str()) {
+                continue;
+            }
 
-/// scalars defines all the possible [scalar value types]
-/// [scalar value types] https://developers.google.com/protocol-buffers/docs/overview#scalar
-pub static SCALARS: phf::Set<&'static str> = phf_set! {
-    "double", "float",
-    "int32", "int64", "uint32", "uint64", "sint32", "sint64",
-    "fixed32", "fixed64", "sfixed32", "sfixed64",
-    "bool", "string", "bytes"
-};
+            // The field's path (e.g pb.example.one.One.OneInner)
+            let mut type_path = type_name.split('.');
 
-/// Type can be a message or enum
-#[derive(Debug, Serialize)]
-#[serde(untagged)]
-pub enum Type {
-    Message(Message),
-    Enum(Enum),
-}
+            // Resolve absolute types starting with a "." by using the list of namespace dependencies
+            if type_name.starts_with('.') {
+                type_path.next(); // skip first
+                for ns in dependencies {
+                    if ns.resolve_path(type_path.clone()).is_some() {
+                        continue 'fields;
+                    }
+                }
 
-impl Type {
-    pub fn has<'a, 'b>(&'a self, paths: impl Iterator<Item = &'b str>) -> bool {
-        match self {
-            Type::Enum(_) => false,
-            Type::Message(msg) => msg.has(paths),
+                return Err(ResolveError::UnresolvedField {
+                    type_name: type_name.to_string(),
+                    field: field_name.to_string(),
+                });
+            }
+
+            // Walk through the resolve path backward until we resolve the type
+            // e.g if the message is defined in One.OneInner, we first try to find it in OneInner, then One, ...
+            for (index, (_, types)) in resolve_path.iter().rev().enumerate() {
+                if types.contains_path(type_path.clone()) {
+                    *type_name = resolve_path
+                        .iter()
+                        .take(resolve_path.len() - index)
+                        .map(|(s, _)| *s)
+                        .chain(type_path)
+                        .collect::<Vec<_>>()
+                        .to_path_string();
+
+                    continue 'fields;
+                }
+            }
+
+            // The type was not found in the nested messages, We try to resolve it through the dependencies
+            for ns in dependencies.iter() {
+                if let Some(path) = ns.resolve_path(type_path.clone()) {
+                    *type_name = path;
+                    continue 'fields;
+                }
+            }
+
+            return Err(ResolveError::UnresolvedField {
+                type_name: type_name.to_string(),
+                field: field_name.to_string(),
+            });
         }
-    }
 
-    pub fn get<'a, 'b>(&'a self, key: &str) -> Option<&Type> {
-        match self {
-            Type::Enum(_) => None,
-            Type::Message(msg) => msg.nested.get(key),
+        // Resolve nested messages
+        for (name, t) in self.nested.iter() {
+            if let Some(msg) = t.as_message() {
+                let mut resolve_path = resolve_path.clone();
+                resolve_path.push((name.as_str(), &msg.nested));
+                msg.resolve_types(dependencies, resolve_path)?;
+            }
         }
-    }
 
-    pub fn as_message(&self) -> Option<&Message> {
-        match self {
-            Type::Enum(_) => None,
-            Type::Message(msg) => Some(msg),
-        }
-    }
-}
-
-/// Enum defines a proto [emum]
-/// [enum] https://developers.google.com/protocol-buffers/docs/proto3#enum
-#[derive(Debug, Serialize)]
-pub struct Enum {
-    /// a map of name => field id
-    values: HashMap<String, i32>,
-}
-
-impl Enum {
-    /// Returns a new Enum
-    pub fn new() -> Self {
-        Self {
-            values: HashMap::new(),
-        }
-    }
-
-    /// Insert a new field with the given key and id
-    pub fn insert(&mut self, key: String, id: i32) {
-        self.values.insert(key, id);
-    }
-}
-
-/// FieldRule represents a proto [field rule]
-/// [field rule] https://developers.google.com/protocol-buffers/docs/proto#specifying_field_rules
-#[derive(Display, Debug, Serialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum FieldRule {
-    #[display(fmt = "repeated")]
-    Repeated,
-
-    #[display(fmt = "optional")]
-    Optional,
-
-    #[display(fmt = "required")]
-    Required,
-}
-
-/// Field represents a proto message [field]
-/// [field] https://developers.google.com/protocol-buffers/docs/proto#specifying_field_types
-#[derive(Serialize, Debug)]
-pub struct Field {
-    // The field Id
-    pub id: u32,
-
-    // For map the type of the key
-    #[serde(rename = "keyType", skip_serializing_if = "Option::is_none")]
-    pub key_type: Option<String>,
-
-    // the type of the field
-    #[serde(rename = "type")]
-    pub type_name: RefCell<String>,
-
-    // the field rule associated with this type
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rule: Option<FieldRule>,
-}
-
-impl Field {
-    /// Creates a new field
-    pub fn new(
-        id: u32,
-        type_name: String,
-        rule: Option<FieldRule>,
-        key_type: Option<String>,
-    ) -> Field {
-        Self {
-            id,
-            type_name: RefCell::new(type_name),
-            rule,
-            key_type,
-        }
-    }
-}
-
-/// Oneof represents a proto [oneof] field
-/// [oneof] https://developers.google.com/protocol-buffers/docs/proto#oneof
-#[derive(Debug, Serialize)]
-pub struct Oneof {
-    #[serde(rename = "oneof")]
-    values: Vec<String>,
-}
-
-impl Oneof {
-    /// Returns a new oneof
-    pub fn new() -> Self {
-        Self { values: Vec::new() }
-    }
-
-    /// Add a field to the oneof
-    pub fn add_field_name(&mut self, value: String) {
-        self.values.push(value);
+        Ok(())
     }
 }

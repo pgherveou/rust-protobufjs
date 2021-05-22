@@ -1,7 +1,7 @@
 use crate::parse_error::TokenError;
 use crate::position::Position;
 use crate::token::Token;
-use crate::{iterator_with_position::IteratorWithPosition, message::FieldRule};
+use crate::{field::FieldRule, iterator_with_position::IteratorWithPosition};
 
 /// A tokenizer reads from the `chars` iterator and produce `Token`
 pub struct Tokenizer<I: Iterator> {
@@ -163,6 +163,7 @@ impl<I: Iterator<Item = char>> Tokenizer<I> {
 
             Some('=') => Ok(Token::Eq),
             Some(';') => Ok(Token::Semi),
+            Some(':') => Ok(Token::Colon),
             Some('{') => Ok(Token::LBrace),
             Some('}') => Ok(Token::RBrace),
             Some('(') => Ok(Token::LParen),
