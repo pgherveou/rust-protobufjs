@@ -5,7 +5,7 @@ pub trait IntoPath {
 
 impl IntoPath for String {
     fn into_path(self) -> Vec<String> {
-        self.split(".").map(|v| v.to_string()).collect()
+        self.split('.').map(|v| v.to_string()).collect()
     }
 }
 

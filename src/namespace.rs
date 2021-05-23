@@ -62,7 +62,7 @@ impl Namespace {
     /// Returns a new namespace
     pub fn new(path: Vec<String>) -> Self {
         Self {
-            path: path,
+            path,
             imports: HashSet::new(),
             nested: HashMap::new(),
             types: HashMap::new(),
@@ -99,10 +99,10 @@ impl Namespace {
 
     /// Find the child for the given path
     pub fn child(&self, path: &str) -> Option<&Namespace> {
-        let mut paths = path.split(".");
+        let paths = path.split('.');
         let mut ptr = self;
 
-        while let Some(name) = paths.next() {
+        for name in paths {
             match ptr.nested.get(name) {
                 Some(child) => ptr = child,
                 None => return None,
@@ -125,7 +125,7 @@ impl Namespace {
         } = child;
 
         for key in path.into_iter() {
-            ptr = ptr.nested.entry(key).or_insert(Namespace::empty())
+            ptr = ptr.nested.entry(key).or_insert_with(Namespace::empty)
         }
 
         ptr.types.extend(types);
@@ -171,7 +171,7 @@ impl Namespace {
     }
 
     /// Resolve the path against the namespace and return the absolute path when found
-    pub fn resolve_path<'a, 'b>(&'a self, type_path: Split<'a, char>) -> Option<String> {
+    pub fn resolve_path<'a>(&'a self, type_path: Split<'a, char>) -> Option<String> {
         let relative_path = type_path.relative_to(self.path.iter().map(|s| s.as_str()));
         let mut path = relative_path.clone();
 

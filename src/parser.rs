@@ -17,7 +17,7 @@ impl Parser {
     pub fn new(root_dir: PathBuf, parsed_files: HashMap<PathBuf, Namespace>) -> Self {
         Self {
             root_dir,
-            parsed_files: parsed_files,
+            parsed_files,
         }
     }
 

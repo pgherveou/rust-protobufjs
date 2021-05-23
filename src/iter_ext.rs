@@ -87,7 +87,7 @@ pub trait IterExt: Iterator {
             }
         }
 
-        return self;
+        self
     }
 }
 

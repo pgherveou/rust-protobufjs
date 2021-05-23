@@ -50,7 +50,7 @@ impl Message {
             }
         }
 
-        return true;
+        true
     }
 
     /// Add a oneof field
@@ -77,7 +77,7 @@ impl Message {
     /// We iterate through the fields and the nested messages
     pub fn resolve_types(
         &self,
-        dependencies: &Vec<&Namespace>,
+        dependencies: &[&Namespace],
         resolve_path: Vec<(&str, &HashMap<String, Type>)>,
     ) -> Result<(), ResolveError> {
         'fields: for (field_name, field) in self.fields.iter() {

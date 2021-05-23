@@ -337,7 +337,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
                     }
                     found => {
                         return Err(ParseError::UnexpectedToken {
-                            found: found,
+                            found,
                             expected: vec![Token::Option, Token::RBrace],
                         })
                     }
@@ -386,7 +386,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
         let field_id = self
             .read_identifier()?
             .parse::<u32>()
-            .map_err(|err| ParseError::ParseFieldId(err))?;
+            .map_err(ParseError::ParseFieldId)?;
 
         match self.tokenizer.next()? {
             Token::Semi => {}
@@ -433,7 +433,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
                     let radix = if val_str.eq(val_str_trimmed) { 10 } else { 16 };
 
                     let value = i32::from_str_radix(val_str_trimmed, radix)
-                        .map_err(|err| ParseError::ParseEnumValue(err))?;
+                        .map_err(ParseError::ParseEnumValue)?;
 
                     match self.tokenizer.next()? {
                         Token::Semi => {}
