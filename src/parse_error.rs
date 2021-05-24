@@ -62,8 +62,8 @@ pub enum ResolveError {
 }
 
 impl ResolveError {
-    pub fn to_parse_file_error(self, path: PathBuf) -> ParseFileError {
-        return ParseFileError::Resolve(path, self);
+    pub fn into_parse_file_error(self, path: PathBuf) -> ParseFileError {
+        ParseFileError::Resolve(path, self)
     }
 }
 

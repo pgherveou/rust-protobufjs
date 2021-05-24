@@ -13,7 +13,7 @@ pub enum Type {
 
 impl Type {
     /// Get the nested type with the provided key
-    pub fn get<'a, 'b>(&'a self, key: &str) -> Option<&Type> {
+    pub fn get<'a>(&'a self, key: &str) -> Option<&Type> {
         match self {
             Type::Enum(_) => None,
             Type::Message(msg) => msg.nested.get(key),
@@ -46,10 +46,10 @@ impl Resolver for Type {
 impl Resolver for HashMap<String, Type> {
     fn contains_path(&self, mut path: Split<char>) -> bool {
         match path.next() {
-            None => return true,
+            None => true,
             Some(segment) => match self.get(segment) {
-                None => return false,
-                Some(t) => return t.contains_path(path),
+                None => false,
+                Some(t) => t.contains_path(path),
             },
         }
     }

@@ -1,23 +1,7 @@
 use crate::{field::FieldRule, message::Message, namespace::Namespace, r#enum::Enum, r#type::Type};
 use std::collections::HashMap;
 
-trait Printable {
-    fn print(&self) -> &str;
-}
-
-impl Printable for String {
-    fn print(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl Printable for &str {
-    fn print(&self) -> &str {
-        self
-    }
-}
-
-fn format_error_types<'a>(v: Vec<HTTPErrorType<'a>>) -> String {
+fn format_error_types(v: Vec<HTTPErrorType<'_>>) -> String {
     v.iter()
         .map(|HTTPErrorType { code, type_name }| format!("[code: {}, body: {}]", code, type_name))
         .collect::<Vec<_>>()
@@ -36,7 +20,7 @@ struct HTTPOptions<'a> {
 }
 
 impl<'a> HTTPOptions<'a> {
-    pub fn from(raw_options: &'a Vec<Vec<String>>) -> Option<Self> {
+    pub fn from(raw_options: &'a [Vec<String>]) -> Option<Self> {
         let mut path = None;
         let mut method = None;
         let mut error_types = Vec::new();
@@ -88,8 +72,8 @@ impl<'a> HTTPOptions<'a> {
 
         match (path, method) {
             (Some(path), Some(method)) => Some(HTTPOptions {
-                method,
                 path,
+                method,
                 error_types,
             }),
             _ => None,
@@ -97,6 +81,7 @@ impl<'a> HTTPOptions<'a> {
     }
 }
 
+#[derive(Default)]
 pub struct Printer {
     buffer: String,
     print_bubble_client: bool,
@@ -104,16 +89,7 @@ pub struct Printer {
 }
 
 impl Printer {
-    /// Returns a new printer with default options
-    pub fn new() -> Self {
-        Self {
-            buffer: String::new(),
-            print_bubble_client: true,
-            print_network_client: true,
-        }
-    }
-
-    pub fn to_string(mut self, root: &Namespace) -> String {
+    pub fn into_string(mut self, root: &Namespace) -> String {
         if self.print_bubble_client {
             self.println("declare module '@lyft/bubble-client' {");
             self.println("interface Router {");
@@ -207,7 +183,7 @@ impl Printer {
         }
     }
 
-    fn write_message(&mut self, msg: &Message, name: &String) {
+    fn write_message(&mut self, msg: &Message, name: &str) {
         for (name, field) in msg.fields.iter() {
             let type_name = field.type_name.borrow();
             self.println(match (&field.key_type, &field.rule) {
@@ -230,11 +206,8 @@ impl Printer {
         }
     }
 
-    fn println<T>(&mut self, value: T)
-    where
-        T: Printable,
-    {
-        self.buffer.push_str(value.print());
+    fn println<T: AsRef<str>>(&mut self, value: T) {
+        self.buffer.push_str(value.as_ref());
         self.buffer.push('\n')
     }
 }

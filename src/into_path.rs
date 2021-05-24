@@ -3,9 +3,9 @@ pub trait IntoPath {
     fn into_path(self) -> Vec<String>;
 }
 
-impl IntoPath for String {
+impl<T: AsRef<str>> IntoPath for T {
     fn into_path(self) -> Vec<String> {
-        self.split('.').map(|v| v.to_string()).collect()
+        self.as_ref().split('.').map(|v| v.to_string()).collect()
     }
 }
 

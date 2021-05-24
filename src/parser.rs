@@ -30,7 +30,7 @@ impl Parser {
 
         let content = match std::fs::read_to_string(&file_name) {
             Ok(r) => r,
-            Err(error) => return Err(ParseFileError::Read(file_name.clone(), error)),
+            Err(error) => return Err(ParseFileError::Read(file_name, error)),
         };
 
         // create the parser
@@ -46,7 +46,7 @@ impl Parser {
         }
 
         self.parsed_files.insert(file_name, ns);
-        return Ok(());
+        Ok(())
     }
 
     /// Build the namespace graph by consuming all the parsed files
@@ -57,16 +57,16 @@ impl Parser {
 
             namespace
                 .resolve_types(dependencies)
-                .map_err(|err| err.to_parse_file_error(path.into()))?;
+                .map_err(|err| err.into_parse_file_error(path.into()))?;
         }
 
         // build the namespace tree
-        let mut root = Namespace::empty();
+        let mut root = Namespace::default();
         for child in self.parsed_files.into_values() {
             root.append_child(child)
         }
 
-        return Ok(root);
+        Ok(root)
     }
 
     fn get_dependencies(&self, namespace: &Namespace) -> Vec<&Namespace> {
@@ -78,7 +78,7 @@ impl Parser {
                 let ns = &self.parsed_files[&file_path];
                 let mut vec = vec![ns];
                 vec.append(&mut self.get_transitive_dependencies(ns));
-                return vec;
+                vec
             })
             .collect()
     }
@@ -93,7 +93,7 @@ impl Parser {
                     let ns = &self.parsed_files[&file_path];
                     let mut vec = vec![ns];
                     vec.append(&mut self.get_transitive_dependencies(ns));
-                    return vec;
+                    vec
                 }
                 Import::Internal(_) => Vec::new(),
             })

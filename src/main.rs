@@ -1,7 +1,7 @@
 use glob::glob;
 use protobuf::{namespace::Namespace, parser::Parser, ts_serializer};
-use std::{array::IntoIter, collections::HashMap};
-use std::{iter::FromIterator, path::PathBuf};
+use std::array::IntoIter;
+use std::path::PathBuf;
 
 fn main() {
     let home = dirs::home_dir().unwrap();
@@ -16,15 +16,14 @@ fn main() {
 
 #[allow(dead_code)]
 fn parse(root_dir: PathBuf, pattern: &str) -> Result<Namespace, Box<dyn std::error::Error>> {
-    let ignored_files = HashMap::from_iter(
-        IntoIter::new([
-            root_dir.join("validate/validate.proto"),
-            root_dir.join("google/rpc/status.proto"),
-            root_dir.join("google/api/annotations.proto"),
-            root_dir.join("google/api/expr/v1alpha1/syntax.proto"),
-        ])
-        .map(|file| (file, Namespace::empty())),
-    );
+    let ignored_files = IntoIter::new([
+        root_dir.join("validate/validate.proto"),
+        root_dir.join("google/rpc/status.proto"),
+        root_dir.join("google/api/annotations.proto"),
+        root_dir.join("google/api/expr/v1alpha1/syntax.proto"),
+    ])
+    .map(|file| (file, Namespace::default()))
+    .collect();
 
     let pattern = root_dir.join(pattern);
     let entries = glob(pattern.to_string_lossy().as_ref())?;
@@ -42,9 +41,9 @@ fn parse(root_dir: PathBuf, pattern: &str) -> Result<Namespace, Box<dyn std::err
     std::fs::write(output_file, output)?;
     println!("wrote {}", output_file);
 
-    let printer = ts_serializer::Printer::new();
+    let printer = ts_serializer::Printer::default();
+    let output = printer.into_string(&root);
     let output_file = "/tmp/router.d.ts";
-    let output = printer.to_string(&root);
     std::fs::write(output_file, output)?;
     println!("wrote {}", output_file);
 

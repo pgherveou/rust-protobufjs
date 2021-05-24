@@ -73,7 +73,7 @@ pub trait IterExt: Iterator {
         // // get the first object segment
         if let Some(first_segment) = src.next() {
             // find the position of the first segment in the destination
-            if dest.position(|segment| segment == first_segment).is_some() {
+            if dest.any(|segment| segment == first_segment) {
                 self.next();
                 // iterate as long as src and destination segments match
                 loop {
@@ -109,14 +109,14 @@ mod tests {
         assert_eq!(iter.collect::<Vec<_>>(), vec!["1", "2", "3", "4"]);
     }
 
-    fn test_relative_path(obj: &str, from: &str, result: &str) {
-        let obj = obj.split('.').into_iter();
-        let from = from.split('.').into_iter();
+    fn test_relative_path(obj: &str, from: &str, expected: &str) {
+        let result = obj
+            .split('.')
+            .relative_to(from.split('.'))
+            .collect::<Vec<&str>>()
+            .join(".");
 
-        let obj = obj.relative_to(from);
-        let res = obj.collect::<Vec<&str>>();
-
-        assert_eq!(res.join("."), result);
+        assert_eq!(result, expected);
     }
 
     #[test]
@@ -137,14 +137,5 @@ mod tests {
     #[test]
     fn test_relative_path_from_different_namespace() {
         test_relative_path("example.Request", "pb.other", "example.Request");
-    }
-
-    #[test]
-    fn tmp() {
-        test_relative_path(
-            "OneInner",
-            "pb.example.one.One.OneInner.OneInnerInner.OneInnerInnerInner",
-            "example.Request",
-        );
     }
 }

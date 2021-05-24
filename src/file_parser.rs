@@ -31,7 +31,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
         Self {
             file_name,
             tokenizer: Tokenizer::new(iter),
-            namespace: Namespace::empty(),
+            namespace: Namespace::default(),
         }
     }
 
@@ -119,8 +119,8 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     /// [import] https://developers.google.com/protocol-buffers/docs/proto3#importing_definitions
     fn parse_import(&mut self) -> Result<(), ParseError> {
         let import = match self.tokenizer.next()? {
-            Token::Public => Import::Public(self.tokenizer.next()?.as_quoted_string()?),
-            token => Import::Internal(token.as_quoted_string()?),
+            Token::Public => Import::Public(self.tokenizer.next()?.into_quoted_string()?),
+            token => Import::Internal(token.into_quoted_string()?),
         };
 
         self.namespace.add_import(import);
@@ -183,7 +183,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
         let message_name = self.read_identifier()?;
         self.expect_token(Token::LBrace)?;
 
-        let mut message = Message::new();
+        let mut message = Message::default();
         let mut oneof = None;
 
         loop {
@@ -198,7 +198,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
                 }
                 Token::Oneof => {
                     let name = self.read_identifier()?;
-                    oneof = Some((name, Oneof::new()));
+                    oneof = Some((name, Oneof::default()));
                     self.expect_token(Token::LBrace)?;
                 }
                 Token::Enum => {
@@ -262,7 +262,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     /// [service] https://developers.google.com/protocol-buffers/docs/proto3#services
     fn parse_service(&mut self) -> Result<(String, Service), ParseError> {
         let name = self.read_identifier()?;
-        let mut service = Service::new();
+        let mut service = Service::default();
 
         self.expect_token(Token::LBrace)?;
 
@@ -419,7 +419,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     /// [enum] https://developers.google.com/protocol-buffers/docs/proto3#enum
     fn parse_enum(&mut self) -> Result<(String, Enum), ParseError> {
         let enum_name = self.read_identifier()?;
-        let mut e = Enum::new();
+        let mut e = Enum::default();
         self.expect_token(Token::LBrace)?;
 
         loop {

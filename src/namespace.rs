@@ -1,6 +1,12 @@
 use crate::{
-    import::Import, into_path::ToPath, iter_ext::IterExt, message::Message,
-    parse_error::ResolveError, r#enum::Enum, r#type::Type, service::Service,
+    import::Import,
+    into_path::{IntoPath, ToPath},
+    iter_ext::IterExt,
+    message::Message,
+    parse_error::ResolveError,
+    r#enum::Enum,
+    r#type::Type,
+    service::Service,
 };
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use std::{
@@ -9,7 +15,7 @@ use std::{
 };
 
 /// A Namespace represents a serialized proto package
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Default, Debug)]
 #[serde(remote = "Self")]
 pub struct Namespace {
     /// The namespace's path: e.g pb.foo.bar => ["pb", "foo", "bar"]
@@ -60,18 +66,14 @@ impl Serialize for Namespace {
 
 impl Namespace {
     /// Returns a new namespace
-    pub fn new(path: Vec<String>) -> Self {
+    pub fn new<T: IntoPath>(path: T) -> Self {
         Self {
-            path,
+            path: path.into_path(),
             imports: HashSet::new(),
             nested: HashMap::new(),
             types: HashMap::new(),
             services: HashMap::new(),
         }
-    }
-
-    pub fn empty() -> Self {
-        Namespace::new(Vec::new())
     }
 
     /// Add an import statement
@@ -125,7 +127,7 @@ impl Namespace {
         } = child;
 
         for key in path.into_iter() {
-            ptr = ptr.nested.entry(key).or_insert_with(Namespace::empty)
+            ptr = ptr.nested.entry(key).or_insert_with(Namespace::default)
         }
 
         ptr.types.extend(types);
@@ -178,13 +180,7 @@ impl Namespace {
         // look for the type in the namespace using the first segment
         let mut found_type = match path.next() {
             None => return None,
-            Some(name) => {
-                if let Some(t) = self.types.get(name) {
-                    t
-                } else {
-                    return None;
-                }
-            }
+            Some(name) => self.types.get(name)?,
         };
 
         // loop through nested messages
@@ -200,13 +196,7 @@ impl Namespace {
                             .to_path_string(),
                     );
                 }
-                Some(name) => {
-                    if let Some(t) = found_type.get(name) {
-                        t
-                    } else {
-                        return None;
-                    }
-                }
+                Some(name) => found_type.get(name)?,
             };
         }
     }
@@ -214,43 +204,27 @@ impl Namespace {
 
 #[cfg(test)]
 mod tests {
+    use crate::{message::Message, namespace::Namespace};
 
-    use super::Namespace;
+    #[test]
+    fn test_add_child() {
+        let mut root = Namespace::default();
+        root.append_child(Namespace::new("pb.foo.bar"));
 
-    // #[test]
-    // fn test_add_child() {
-    //     let mut root = Namespace::empty();
-    //     let path = "pb.foo.bar"
-    //         .split('.')
-    //         .into_iter()
-    //         .map(|s| s.to_string())
-    //         .collect();
+        assert!(
+            root.child("pb")
+                .and_then(|c| c.child("foo"))
+                .and_then(|c| c.child("bar"))
+                .is_some(),
+            "root should have pb.foo.bar"
+        )
+    }
 
-    //     let child = Namespace::new(path);
-    //     root.append_child(child);
-
-    //     let pb = root.child("pb");
-    //     assert!(pb.is_some(), "should have a pb child");
-    //     let pb = pb.unwrap();
-    //     assert!(pb.parent.is_some(), "should have a pb child");
-
-    //     let foo = pb.child("foo");
-    //     assert!(foo.is_some(), "should have a pb.foo child");
-    //     let foo = foo.unwrap();
-    //     assert!(foo.parent.is_some(), "should have a pb child");
-
-    //     let bar = foo.child("bar");
-    //     assert!(bar.is_some(), "should have a pb.foo.bar child");
-    //     let bar = bar.unwrap();
-    //     assert!(bar.parent.is_some(), "should have a pb child");
-    // }
-
-    // #[test]
-    // fn test_resolve_path() {
-    //     let mut ns = Namespace::new("pb.lyft.otamanager".into_path(), None);
-    //     ns.add_message("CheckInRequest", Message::new());
-    //     let res = ns.resolve_path(&"otamanager.CheckInRequest".split('.').collect());
-
-    //     println!("resolve_path {:?}", res);
-    // }
+    #[test]
+    fn test_resolve_path() {
+        let mut ns = Namespace::new("pb.foo.bar");
+        ns.add_message("Bar", Message::default());
+        let path = ns.resolve_path("Bar".split('.'));
+        assert_eq!(path, Some("pb.foo.bar.Bar".into()))
+    }
 }

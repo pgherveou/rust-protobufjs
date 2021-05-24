@@ -87,7 +87,7 @@ impl Token {
         }
     }
 
-    pub fn as_quoted_string(self) -> Result<String, ParseError> {
+    pub fn into_quoted_string(self) -> Result<String, ParseError> {
         match self {
             Token::String(v) => Ok(v),
             token => Err(ParseError::UnexpectedString(token)),

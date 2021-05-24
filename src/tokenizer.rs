@@ -85,10 +85,10 @@ impl<I: Iterator<Item = char>> Tokenizer<I> {
     fn read_identifier(&mut self, start: char) -> Token {
         let mut vec = vec![start];
 
-        while let Some(char) = self.chars.next_if(|c| match c {
-            'a'..='z' | 'A'..='Z' | '0'..='9' | '.' | '_' => true,
-            _ => false,
-        }) {
+        while let Some(char) = self
+            .chars
+            .next_if(|c| matches!(c, 'a'..='z' | 'A'..='Z' | '0'..='9' | '.' | '_'))
+        {
             vec.push(char);
         }
 
@@ -138,7 +138,7 @@ impl<I: Iterator<Item = char>> Tokenizer<I> {
                 }
 
                 // TODO Trim
-                return Ok(comment);
+                Ok(comment)
             }
 
             // // double slash comment
@@ -149,10 +149,10 @@ impl<I: Iterator<Item = char>> Tokenizer<I> {
                 }
 
                 // TODO cleanup triple slash
-                return Ok(comment);
+                Ok(comment)
             }
 
-            found => return Err(TokenError::UnexpectedChar(found)),
+            found => Err(TokenError::UnexpectedChar(found)),
         }
     }
 

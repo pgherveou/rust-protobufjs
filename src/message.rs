@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 /// Message defines a proto [message]
 /// [message] https://developers.google.com/protocol-buffers/docs/proto3#simple
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 pub struct Message {
     /// A map of name => fields
     pub fields: HashMap<String, Field>,
@@ -29,15 +29,6 @@ pub struct Message {
 }
 
 impl Message {
-    /// Returns a new Message
-    pub fn new() -> Message {
-        Self {
-            fields: HashMap::new(),
-            nested: HashMap::new(),
-            oneofs: HashMap::new(),
-        }
-    }
-
     /// returns true if the message contains the given path
     pub fn has<'a, 'b>(&'a self, mut paths: impl Iterator<Item = &'b str>) -> bool {
         let mut ptr = self;
