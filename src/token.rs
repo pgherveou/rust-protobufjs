@@ -94,9 +94,3 @@ impl Token {
         }
     }
 }
-
-impl From<char> for Token {
-    fn from(_: char) -> Self {
-        todo!()
-    }
-}

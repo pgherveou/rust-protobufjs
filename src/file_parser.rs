@@ -3,23 +3,27 @@ use crate::{
     import::Import,
     into_path::IntoPath,
     message::Message,
+    metadata::Metadata,
     namespace::Namespace,
     oneof::Oneof,
-    parse_error::{ParseError, ParseFileError},
+    parse_error::{ParseError, ParseErrorWithPosition, TokenError},
     r#enum::Enum,
     service::{Rpc, Service},
     token::Token,
     tokenizer::Tokenizer,
 };
-use std::{path::PathBuf, vec};
+use std::{path::Path, rc::Rc, vec};
 
 /// FileParser parse a single file into a namespace
 pub struct FileParser<I: Iterator> {
     /// The path of the file being parsed. This is used to populate links when generating artifacts
-    file_name: PathBuf,
+    file_path: Rc<Path>,
 
     /// The tokenizer used to parse the file
     tokenizer: Tokenizer<I>,
+
+    // Peeked token
+    peeked: Option<Result<Token, TokenError>>,
 
     /// The namespace that will be populated as we parse the file
     namespace: Namespace,
@@ -27,31 +31,29 @@ pub struct FileParser<I: Iterator> {
 
 impl<I: Iterator<Item = char>> FileParser<I> {
     /// Returns a new parser for the given filename and iterator
-    pub fn new(file_name: PathBuf, iter: I) -> Self {
+    pub fn new(file_path: impl Into<Rc<Path>>, iter: I) -> Self {
         Self {
-            file_name,
+            file_path: file_path.into(),
             tokenizer: Tokenizer::new(iter),
+            peeked: None,
             namespace: Namespace::default(),
         }
     }
 
     /// Parse the file and return the namespace
-    pub fn parse(mut self, content: &str) -> Result<Namespace, ParseFileError> {
+    pub fn parse(mut self) -> Result<Namespace, ParseErrorWithPosition> {
         match self.parse_helper() {
             Ok(()) => Ok(self.namespace),
             Err(error) => {
                 let position = self.tokenizer.current_position();
-                let Self { file_name, .. } = self;
-                Err(ParseFileError::from_parse_error(
-                    error, file_name, content, position,
-                ))
+                Err(ParseErrorWithPosition(error, position))
             }
         }
     }
 
     fn parse_helper(&mut self) -> Result<(), ParseError> {
         loop {
-            match self.tokenizer.next()? {
+            match self.next()? {
                 Token::EOF => return Ok(()),
                 Token::Package => {
                     self.parse_package()?;
@@ -91,6 +93,41 @@ impl<I: Iterator<Item = char>> FileParser<I> {
         }
     }
 
+    /// Advance the iterator or take the peeked item
+    fn next(&mut self) -> Result<Token, TokenError> {
+        if let Some(v) = self.peeked.take() {
+            return v;
+        }
+
+        self.tokenizer.next()
+    }
+
+    fn metadata(&mut self) -> Metadata {
+        let comment = self.tokenizer.comment.take();
+        let line = self.tokenizer.current_line();
+
+        assert!(self.peeked.is_none());
+
+        match comment {
+            // get leading_comments if any
+            Some(cmt) if cmt.end_line == line - 1 => {
+                Metadata::new(self.file_path.clone(), Some(cmt), line)
+            }
+
+            // get trailing_comments if any
+            _ => {
+                // peek next value
+                self.peeked.replace(self.tokenizer.next());
+                let trailing_comment = match self.tokenizer.comment.as_ref() {
+                    Some(cmt) if cmt.start_line == line => self.tokenizer.comment.take(),
+                    _ => None,
+                };
+
+                Metadata::new(self.file_path.clone(), trailing_comment, line)
+            }
+        }
+    }
+
     /// Parse the [package] name
     /// For example:
     ///
@@ -118,9 +155,15 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     ///
     /// [import] https://developers.google.com/protocol-buffers/docs/proto3#importing_definitions
     fn parse_import(&mut self) -> Result<(), ParseError> {
-        let import = match self.tokenizer.next()? {
-            Token::Public => Import::Public(self.tokenizer.next()?.into_quoted_string()?),
-            token => Import::Internal(token.into_quoted_string()?),
+        let import = match self.next()? {
+            Token::Public => {
+                let str = self.next()?.into_quoted_string()?;
+                Import::Public(str.into())
+            }
+            token => {
+                let str = token.into_quoted_string()?;
+                Import::Internal(str.into())
+            }
         };
 
         self.namespace.add_import(import);
@@ -153,7 +196,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     fn parse_option(&mut self) -> Result<Vec<String>, ParseError> {
         let mut values = Vec::new();
         loop {
-            match self.tokenizer.next()? {
+            match self.next()? {
                 Token::Semi => break,
                 Token::EOF => return Err(ParseError::EOF),
                 Token::Identifier(s) | Token::String(s) => {
@@ -183,11 +226,11 @@ impl<I: Iterator<Item = char>> FileParser<I> {
         let message_name = self.read_identifier()?;
         self.expect_token(Token::LBrace)?;
 
-        let mut message = Message::default();
+        let mut message = Message::new(self.metadata());
         let mut oneof = None;
 
         loop {
-            match self.tokenizer.next()? {
+            match self.next()? {
                 Token::RBrace => match oneof.take() {
                     Some((name, oneof)) => message.add_oneof(name, oneof),
                     None => break,
@@ -198,7 +241,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
                 }
                 Token::Oneof => {
                     let name = self.read_identifier()?;
-                    oneof = Some((name, Oneof::default()));
+                    oneof = Some((name, Oneof::new(self.metadata())));
                     self.expect_token(Token::LBrace)?;
                 }
                 Token::Enum => {
@@ -212,7 +255,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
                     self.parse_extensions()?;
                 }
                 Token::Option => {
-                    self.parse_message_option()?;
+                    message.md.add_option(self.parse_option()?);
                 }
                 Token::FieldRule(rule) => {
                     let type_name = self.read_identifier()?;
@@ -262,12 +305,12 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     /// [service] https://developers.google.com/protocol-buffers/docs/proto3#services
     fn parse_service(&mut self) -> Result<(String, Service), ParseError> {
         let name = self.read_identifier()?;
-        let mut service = Service::default();
+        let mut service = Service::new(self.metadata());
 
         self.expect_token(Token::LBrace)?;
 
         loop {
-            match self.tokenizer.next()? {
+            match self.next()? {
                 Token::RBrace => {
                     break;
                 }
@@ -304,11 +347,11 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     /// [rpc] https://developers.google.com/protocol-buffers/docs/proto3#services
     fn parse_rpc(&mut self) -> Result<(String, Rpc), ParseError> {
         let name = self.read_identifier()?;
-        let mut options = Vec::new();
+        let mut md = self.metadata();
 
         self.expect_token(Token::LParen)?;
 
-        let (request_type, request_stream) = match self.tokenizer.next()? {
+        let (request_type, request_stream) = match self.next()? {
             Token::Stream => (self.read_identifier()?, true),
             token => (token.identifier()?, false),
         };
@@ -317,20 +360,20 @@ impl<I: Iterator<Item = char>> FileParser<I> {
         self.expect_token(Token::Returns)?;
         self.expect_token(Token::LParen)?;
 
-        let (response_type, response_stream) = match self.tokenizer.next()? {
+        let (response_type, response_stream) = match self.next()? {
             Token::Stream => (self.read_identifier()?, true),
             token => (token.identifier()?, false),
         };
 
         self.expect_token(Token::RParen)?;
 
-        match self.tokenizer.next()? {
+        match self.next()? {
             Token::Semi => {}
             Token::LBrace => loop {
-                match self.tokenizer.next()? {
+                match self.next()? {
                     Token::Option => {
                         let option = self.parse_option()?;
-                        options.push(option);
+                        md.add_option(option);
                     }
                     Token::RBrace => {
                         break;
@@ -358,7 +401,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
                 request_stream,
                 response_type,
                 response_stream,
-                options,
+                md,
             ),
         ))
     }
@@ -381,27 +424,18 @@ impl<I: Iterator<Item = char>> FileParser<I> {
         let field_name = self.read_identifier()?;
         self.expect_token(Token::Eq)?;
 
-        // usize::from_str_radix(num.trim_start_matches("0x"), 16)
-
         let field_id = self
             .read_identifier()?
             .parse::<u32>()
             .map_err(ParseError::ParseFieldId)?;
 
-        match self.tokenizer.next()? {
-            Token::Semi => {}
-            Token::LBrack => {
-                self.tokenizer.skip_until_token(Token::Semi)?;
-            }
-            found => {
-                return Err(ParseError::UnexpectedToken {
-                    found,
-                    expected: vec![Token::Semi, Token::LBrack],
-                })
-            }
-        }
+        let mut md = self.metadata();
+        md.options = vec![self.parse_option()?];
 
-        Ok((field_name, Field::new(field_id, type_name, rule, key_type)))
+        Ok((
+            field_name,
+            Field::new(field_id, type_name, rule, key_type, md),
+        ))
     }
 
     /// Parse an [enum]
@@ -419,11 +453,11 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     /// [enum] https://developers.google.com/protocol-buffers/docs/proto3#enum
     fn parse_enum(&mut self) -> Result<(String, Enum), ParseError> {
         let enum_name = self.read_identifier()?;
-        let mut e = Enum::default();
+        let mut e = Enum::new(self.metadata());
         self.expect_token(Token::LBrace)?;
 
         loop {
-            match self.tokenizer.next()? {
+            match self.next()? {
                 Token::RBrace => return Ok((enum_name, e)),
                 Token::Identifier(key) => {
                     self.expect_token(Token::Eq)?;
@@ -435,7 +469,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
                     let value = i32::from_str_radix(val_str_trimmed, radix)
                         .map_err(ParseError::ParseEnumValue)?;
 
-                    match self.tokenizer.next()? {
+                    match self.next()? {
                         Token::Semi => {}
                         Token::LBrack => {
                             self.tokenizer.skip_until_token(Token::RBrack)?;
@@ -465,18 +499,6 @@ impl<I: Iterator<Item = char>> FileParser<I> {
                 }
             }
         }
-    }
-
-    /// Parse a message option
-    /// We currently do not parse options, we simply fast forward to the end of the statement
-    /// For example:
-    ///
-    /// ```proto
-    /// option deprecated = true;
-    /// ```
-    fn parse_message_option(&mut self) -> Result<(), ParseError> {
-        self.tokenizer.skip_until_token(Token::Semi)?;
-        Ok(())
     }
 
     /// Parse a message [reserved] fields
@@ -509,7 +531,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
 
     /// Read a quoted string or fail with an error
     fn read_quoted_string(&mut self) -> Result<String, ParseError> {
-        match self.tokenizer.next()? {
+        match self.next()? {
             Token::String(v) => Ok(v),
             token => Err(ParseError::UnexpectedString(token)),
         }
@@ -517,12 +539,12 @@ impl<I: Iterator<Item = char>> FileParser<I> {
 
     /// Read a string identifier or fail with an error
     fn read_identifier(&mut self) -> Result<String, ParseError> {
-        self.tokenizer.next()?.identifier()
+        self.next()?.identifier()
     }
 
     /// Read the passed token of fail if the next token does not match the expected one
     fn expect_token(&mut self, expected: Token) -> Result<(), ParseError> {
-        let token = self.tokenizer.next()?;
+        let token = self.next()?;
         if token == expected {
             return Ok(());
         }
@@ -530,5 +552,61 @@ impl<I: Iterator<Item = char>> FileParser<I> {
             found: token,
             expected: vec![expected],
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::FileParser;
+    use std::path::PathBuf;
+
+    #[test]
+    fn it_should_parse_comment() -> Result<(), Box<dyn std::error::Error>> {
+        let file_path: PathBuf = "test.proto".into();
+        let text = r#"
+        message Foo {
+            optional int32 bar = 2; 
+            
+            // leading comment attached to foo
+            optional int32 foo = 1; // trailing comment attached to foo
+        }
+        "#;
+
+        let parser = FileParser::new(file_path, text.chars());
+        let ns = parser.parse()?;
+        let cmt = ns
+            .types
+            .get("Foo")
+            .and_then(|t| t.as_message())
+            .and_then(|msg| msg.fields.get("foo"))
+            .and_then(|f| f.md.comment.as_ref())
+            .map(|cmt| cmt.text.as_str());
+
+        println!("{}", cmt.unwrap_or("NONE"));
+
+        Ok(())
+    }
+    #[test]
+    fn playground() -> Result<(), Box<dyn std::error::Error>> {
+        let file_path: PathBuf = "test.proto".into();
+        let text = r#"
+        message Foo {
+            option deprecated = true;
+            optional int32 foo = 1 [deprecated = true];
+        }
+        "#;
+
+        let parser = FileParser::new(file_path, text.chars());
+        let ns = parser.parse()?;
+        let item = ns
+            .types
+            .get("Foo")
+            .and_then(|t| t.as_message())
+            .map(|msg| &msg.md);
+
+        println!("{:?}", item);
+
+        Ok(())
     }
 }

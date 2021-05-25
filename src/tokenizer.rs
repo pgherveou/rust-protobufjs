@@ -1,3 +1,5 @@
+use crate::comment::Comment;
+use crate::comment::CommentKind;
 use crate::parse_error::TokenError;
 use crate::position::Position;
 use crate::token::Token;
@@ -9,7 +11,7 @@ pub struct Tokenizer<I: Iterator> {
     chars: IteratorWithPosition<I>,
 
     /// The current comment if any
-    pub comment: Option<String>,
+    pub comment: Option<Comment>,
 }
 
 impl<I: Iterator<Item = char>> Tokenizer<I> {
@@ -19,6 +21,11 @@ impl<I: Iterator<Item = char>> Tokenizer<I> {
             chars: IteratorWithPosition::new(chars),
             comment: None,
         }
+    }
+
+    /// Returns the current line
+    pub fn current_line(&self) -> usize {
+        self.chars.current_line()
     }
 
     /// Returns the current position
@@ -118,38 +125,94 @@ impl<I: Iterator<Item = char>> Tokenizer<I> {
     }
 
     /// Return the next comment
-    fn read_comment(&mut self) -> Result<String, TokenError> {
-        let char = self.chars.next().unwrap_or(' ');
+    fn read_comment(&mut self) -> Result<Comment, TokenError> {
+        let char = self.chars.next().ok_or(TokenError::EOF)?;
+        let start_line = self.current_line();
 
         match char {
             // /* slash star comment */
             '*' => {
-                let mut previous_char = self.chars.next().unwrap_or(' ');
+                let mut previous_char = self.chars.next().ok_or(TokenError::EOF)?;
+
+                // ignore second * for block comments starting with /**
+                if previous_char == '*' {
+                    previous_char = self.chars.next().ok_or(TokenError::EOF)?;
+                }
+
                 let mut comment = String::new();
+                let mut last_insert_is_line = false;
 
                 while let Some(current_char) = self.chars.next() {
                     match (previous_char, current_char) {
-                        ('*', '/') => return Ok(comment),
+                        // return comment when we get a */
+                        ('*', '/') => {
+                            return Ok(Comment::star_slash(
+                                comment,
+                                start_line,
+                                self.current_line(),
+                            ));
+                        }
+
+                        // skip \r
+                        ('\r', _) => {
+                            previous_char = current_char;
+                        }
+
+                        // skip whitespace after a new line
+                        ('\n', ' ' | '\t') => {}
+
                         _ => {
-                            comment.push(previous_char);
-                            previous_char = current_char
+                            match (last_insert_is_line, previous_char) {
+                                (true, '*') => {}
+                                (_, '\n') => {
+                                    last_insert_is_line = true;
+                                    comment.push(previous_char);
+                                }
+                                _ => comment.push(previous_char),
+                            }
+
+                            previous_char = current_char;
                         }
                     }
                 }
 
-                // TODO Trim
-                Ok(comment)
+                Ok(Comment::star_slash(
+                    comment,
+                    start_line,
+                    self.current_line(),
+                ))
             }
 
             // // double slash comment
             '/' => {
                 let mut comment = String::new();
+                let mut stripped_first_slash = false;
                 while let Some(c) = self.chars.next_if(|c| *c != '\n') {
-                    comment.push(c);
+                    if stripped_first_slash {
+                        comment.push(c);
+                    } else {
+                        stripped_first_slash = true;
+                        if c != '/' {
+                            comment.push(c);
+                        }
+                    }
                 }
 
-                // TODO cleanup triple slash
-                Ok(comment)
+                Ok(match self.comment.take() {
+                    // Concat with the previous double slash comment if it directly preceed this one
+                    Some(Comment {
+                        kind: CommentKind::DoubleSlash,
+                        text,
+                        start_line: previous_start_line,
+                        end_line,
+                        ..
+                    }) if end_line == start_line - 1 => Comment::double_slash(
+                        format!("{}\n{}", text, comment),
+                        previous_start_line,
+                        start_line,
+                    ),
+                    _ => Comment::double_slash(comment, start_line, start_line),
+                })
             }
 
             found => Err(TokenError::UnexpectedChar(found)),
@@ -174,14 +237,8 @@ impl<I: Iterator<Item = char>> Tokenizer<I> {
             Some('>') => Ok(Token::Rangle),
             Some(',') => Ok(Token::Comma),
 
-            // whitespaces
-            Some(' ') | Some('\t') => self.next(),
-
-            // New line
-            Some('\n') | Some('\r') => {
-                self.comment = None;
-                self.next()
-            }
+            // whitespace or New line
+            Some(' ') | Some('\t') | Some('\r') | Some('\n') => self.next(),
 
             // comment
             Some('/') => {
@@ -204,29 +261,9 @@ mod tests {
     use crate::{parse_error::TokenError, token::Token};
 
     #[test]
-    fn it_should_parse_single_quote_string() -> Result<(), TokenError> {
-        let mut tokenizer = Tokenizer::new("'hello world'".chars());
-        assert_eq!(tokenizer.next()?, Token::String("hello world".to_string()));
-        Ok(())
-    }
-
-    #[test]
     fn it_should_parse_double_quote_string() -> Result<(), TokenError> {
         let mut tokenizer = Tokenizer::new(r#""hello world""#.chars());
-        assert_eq!(
-            tokenizer.next()?,
-            Token::Identifier("hello world".to_string())
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn it_should_parse_escaped_string() -> Result<(), TokenError> {
-        let mut tokenizer = Tokenizer::new("'hello \\' \n world'".chars());
-        assert_eq!(
-            tokenizer.next()?,
-            Token::String("hello ' \n world".to_string())
-        );
+        assert_eq!(tokenizer.next()?, Token::String("hello world".to_string()));
         Ok(())
     }
 
@@ -234,7 +271,32 @@ mod tests {
     fn it_should_parse_double_slash_comment() -> Result<(), TokenError> {
         let mut tokenizer = Tokenizer::new("// hello world".chars());
         tokenizer.next()?;
-        assert_eq!(tokenizer.comment, Some(" hello world".to_string()));
+        assert_eq!(
+            tokenizer.comment.map(|c| c.text),
+            Some(" hello world".into())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn it_should_parse_triple_slash_comment() -> Result<(), TokenError> {
+        let mut tokenizer = Tokenizer::new("/// hello world".chars());
+        tokenizer.next()?;
+        assert_eq!(
+            tokenizer.comment.map(|c| c.text),
+            Some(" hello world".into())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn it_should_parse_multiline_double_slash_comment() -> Result<(), TokenError> {
+        let mut tokenizer = Tokenizer::new("// hello\n// world".chars());
+        tokenizer.next()?;
+        assert_eq!(
+            tokenizer.comment.map(|c| c.text),
+            Some(" hello\n world".into())
+        );
         Ok(())
     }
 
@@ -242,7 +304,30 @@ mod tests {
     fn it_should_parse_slash_star_comment() -> Result<(), TokenError> {
         let mut tokenizer = Tokenizer::new("/* hello world */".chars());
         tokenizer.next()?;
-        assert_eq!(tokenizer.comment, Some(" hello world ".to_string()));
+
+        assert_eq!(
+            tokenizer.comment.map(|c| c.text),
+            Some(" hello world ".into())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn it_should_parse_doc_string() -> Result<(), TokenError> {
+        let comment = r#"
+        /**
+         * Block comment l1
+         * Block comment l2
+         * Block comment l3
+         */          
+        "#;
+
+        let mut tokenizer = Tokenizer::new(comment.chars());
+        tokenizer.next()?;
+        assert_eq!(
+            tokenizer.comment.map(|c| c.text),
+            Some("\n Block comment l1\n Block comment l2\n Block comment l3\n".into())
+        );
         Ok(())
     }
 }

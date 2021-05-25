@@ -14,6 +14,9 @@ pub enum TokenError {
 
     #[error("Unexpected char {0}")]
     UnexpectedChar(char),
+
+    #[error("Unexpected end of file")]
+    EOF,
 }
 
 /// ParseError defines an error generated when parsing a file
@@ -51,6 +54,10 @@ pub enum ParseError {
     TokenError(#[from] TokenError),
 }
 
+#[derive(Error, Debug, PartialEq)]
+#[error("...")]
+pub struct ParseErrorWithPosition(pub ParseError, pub Position);
+
 #[derive(Error, Debug)]
 #[error("...")]
 pub enum ResolveError {
@@ -83,15 +90,10 @@ pub enum ParseFileError {
     FileAlreadyParsed,
 }
 
-impl ParseFileError {
+impl ParseErrorWithPosition {
     /// Returns a ParseFileError by using the file's content and current position
-    /// to add some context to the ParseError
-    pub fn from_parse_error(
-        error: ParseError,
-        file_name: PathBuf,
-        content: &str,
-        position: Position,
-    ) -> ParseFileError {
+    pub fn into_file_error(self, file_path: PathBuf, content: &str) -> ParseFileError {
+        let ParseErrorWithPosition(error, position) = self;
         let line_number = position.line;
         let line_number_width = line_number.to_string().len();
         let show_lines = std::cmp::min(position.line, 3);
@@ -118,7 +120,7 @@ impl ParseFileError {
 
         ParseFileError::ParseError(format!(
             "Failed to parse {}\n{}\n{}{}",
-            file_name.display(),
+            file_path.display(),
             lines,
             padding,
             error

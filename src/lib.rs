@@ -3,14 +3,17 @@
 #![feature(iter_intersperse)]
 #![feature(map_try_insert)]
 
+mod comment;
 mod r#enum;
 mod field;
 mod file_parser;
+mod http_options;
 mod import;
 mod into_path;
 mod iter_ext;
 mod iterator_with_position;
 pub mod message;
+mod metadata;
 pub mod namespace;
 mod oneof;
 pub mod parse_error;

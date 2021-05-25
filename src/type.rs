@@ -1,7 +1,7 @@
-use std::{collections::HashMap, str::Split};
-
 use crate::{message::Message, r#enum::Enum};
+use linked_hash_map::LinkedHashMap;
 use serde::Serialize;
+use std::str::Split;
 
 /// Type can be a message or enum
 #[derive(Debug, Serialize)]
@@ -43,7 +43,7 @@ impl Resolver for Type {
     }
 }
 
-impl Resolver for HashMap<String, Type> {
+impl Resolver for LinkedHashMap<String, Type> {
     fn contains_path(&self, mut path: Split<char>) -> bool {
         match path.next() {
             None => true,

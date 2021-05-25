@@ -45,6 +45,14 @@ impl<I: Iterator<Item = char>> IteratorWithPosition<I> {
 
         position
     }
+
+    /// Returns the current line
+    pub fn current_line(&self) -> usize {
+        match self.peeked {
+            Some(Some('\n')) => self.position.line - 1,
+            _ => self.position.line,
+        }
+    }
 }
 
 impl<I: Iterator<Item = char>> Iterator for IteratorWithPosition<I> {

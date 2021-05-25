@@ -12,8 +12,8 @@ dirs = "3.0.2"
 serde = { version = "1.0.117", features = ["derive"] }
 serde_json = "1.0.59"
 glob = "0.3.0"
-backtrace = "0.3"
+linked-hash-map = {version = "0.5.4", features = ["serde_impl"]}
 derive_more = { version = "0.99.0",  default-features = false, features =["display"] }
 phf = { version = "0.7.24", features = ["macros"] }
-
+indoc = "1.0.3"
 

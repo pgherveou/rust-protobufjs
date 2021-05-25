@@ -1,6 +1,7 @@
 use crate::{
     field::Field,
     into_path::ToPath,
+    metadata::Metadata,
     namespace::Namespace,
     oneof::Oneof,
     parse_error::ResolveError,
@@ -8,27 +9,41 @@ use crate::{
     r#type::{Resolver, Type},
     scalar::SCALARS,
 };
+use linked_hash_map::LinkedHashMap;
 use serde::Serialize;
-use std::collections::HashMap;
 
 /// Message defines a proto [message]
 /// [message] https://developers.google.com/protocol-buffers/docs/proto3#simple
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Serialize)]
 pub struct Message {
-    /// A map of name => fields
-    pub fields: HashMap<String, Field>,
-
     /// A map of name => oneof
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub oneofs: HashMap<String, Oneof>,
+    #[serde(skip_serializing_if = "LinkedHashMap::is_empty")]
+    pub oneofs: LinkedHashMap<String, Oneof>,
+
+    /// A map of name => fields
+    pub fields: LinkedHashMap<String, Field>,
 
     /// A map of name => [nested] message or enum
     /// [nested] https://developers.google.com/protocol-buffers/docs/proto3#nested
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub nested: HashMap<String, Type>,
+    #[serde(skip_serializing_if = "LinkedHashMap::is_empty")]
+    pub nested: LinkedHashMap<String, Type>,
+
+    /// metadata associated to the Enum
+    #[serde(skip_serializing)]
+    pub md: Metadata,
 }
 
 impl Message {
+    // Returns a new Message with the provided metadata
+    pub fn new(md: Metadata) -> Self {
+        Self {
+            fields: LinkedHashMap::new(),
+            oneofs: LinkedHashMap::new(),
+            nested: LinkedHashMap::new(),
+            md,
+        }
+    }
+
     /// returns true if the message contains the given path
     pub fn has<'a, 'b>(&'a self, mut paths: impl Iterator<Item = &'b str>) -> bool {
         let mut ptr = self;
@@ -69,7 +84,7 @@ impl Message {
     pub fn resolve_types(
         &self,
         dependencies: &[&Namespace],
-        resolve_path: Vec<(&str, &HashMap<String, Type>)>,
+        resolve_path: Vec<(&str, &LinkedHashMap<String, Type>)>,
     ) -> Result<(), ResolveError> {
         'fields: for (field_name, field) in self.fields.iter() {
             let mut type_name = field.type_name.borrow_mut();

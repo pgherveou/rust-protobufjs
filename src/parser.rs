@@ -1,20 +1,20 @@
 use crate::{
     file_parser::FileParser, import::Import, namespace::Namespace, parse_error::ParseFileError,
 };
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::Path, rc::Rc};
 
 /// The parser parse files and populate the root namespace
 pub struct Parser {
     /// The root directory used to resolve import statements
-    root_dir: PathBuf,
+    root_dir: Rc<Path>,
 
     /// List of parsed files
-    parsed_files: HashMap<PathBuf, Namespace>,
+    pub parsed_files: HashMap<Rc<Path>, Namespace>,
 }
 
 impl Parser {
     /// Returns a new parser with the given root directory and a list of files we want to ignore    
-    pub fn new(root_dir: PathBuf, parsed_files: HashMap<PathBuf, Namespace>) -> Self {
+    pub fn new(root_dir: Rc<Path>, parsed_files: HashMap<Rc<Path>, Namespace>) -> Self {
         Self {
             root_dir,
             parsed_files,
@@ -23,29 +23,31 @@ impl Parser {
 
     /// Parse the given file, and it's import dependencies
     /// The result will be merged into the root namespace of the parser
-    pub fn parse_file(&mut self, file_name: PathBuf) -> Result<(), ParseFileError> {
-        if self.parsed_files.contains_key(&file_name) {
+    pub fn parse_file(&mut self, file_path: Rc<Path>) -> Result<(), ParseFileError> {
+        if self.parsed_files.contains_key(&file_path) {
             return Ok(());
         }
 
-        let content = match std::fs::read_to_string(&file_name) {
+        let path = self.root_dir.join(file_path.as_ref());
+        let content = match std::fs::read_to_string(&path) {
             Ok(r) => r,
-            Err(error) => return Err(ParseFileError::Read(file_name, error)),
+            Err(error) => return Err(ParseFileError::Read(path, error)),
         };
 
         // create the parser
-        let file_parser = FileParser::new(file_name.clone(), content.chars());
+        let file_parser = FileParser::new(file_path.clone(), content.chars());
 
         // parse the namespace
-        let ns = file_parser.parse(&content)?;
+        let ns = file_parser
+            .parse()
+            .map_err(|error| error.into_file_error(path, content.as_str()))?;
 
         // get the list of imported files and parse them
         for import in ns.imports.iter() {
-            let file_name = self.root_dir.join(import.as_str());
-            self.parse_file(file_name)?;
+            self.parse_file(import.as_path().into())?;
         }
 
-        self.parsed_files.insert(file_name, ns);
+        self.parsed_files.insert(file_path, ns);
         Ok(())
     }
 
@@ -57,7 +59,7 @@ impl Parser {
 
             namespace
                 .resolve_types(dependencies)
-                .map_err(|err| err.into_parse_file_error(path.into()))?;
+                .map_err(|err| err.into_parse_file_error(self.root_dir.join(path.as_ref())))?;
         }
 
         // build the namespace tree
@@ -73,9 +75,8 @@ impl Parser {
         namespace
             .imports
             .iter()
-            .flat_map(|f| {
-                let file_path = self.root_dir.join(f.as_str());
-                let ns = &self.parsed_files[&file_path];
+            .flat_map(|import| {
+                let ns = &self.parsed_files[import.as_path()];
                 let mut vec = vec![ns];
                 vec.append(&mut self.get_transitive_dependencies(ns));
                 vec
@@ -89,8 +90,7 @@ impl Parser {
             .iter()
             .flat_map(|f| match f {
                 Import::Public(path) => {
-                    let file_path = self.root_dir.join(path);
-                    let ns = &self.parsed_files[&file_path];
+                    let ns = &self.parsed_files[path.as_path()];
                     let mut vec = vec![ns];
                     vec.append(&mut self.get_transitive_dependencies(ns));
                     vec

@@ -8,9 +8,10 @@ use crate::{
     r#type::Type,
     service::Service,
 };
+use linked_hash_map::LinkedHashMap;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashSet},
     str::Split,
 };
 
@@ -27,16 +28,16 @@ pub struct Namespace {
     pub imports: HashSet<Import>,
 
     /// A list of nested namespaces
-    #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
-    pub nested: HashMap<String, Namespace>,
+    #[serde(flatten, skip_serializing_if = "BTreeMap::is_empty")]
+    pub nested: BTreeMap<String, Namespace>,
 
     /// A map of name => Service defined in this namespace
-    #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
-    pub services: HashMap<String, Service>,
+    #[serde(flatten, skip_serializing_if = "LinkedHashMap::is_empty")]
+    pub services: LinkedHashMap<String, Service>,
 
     /// A map of name => Type (Enum or Message) defined in this namespace
-    #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
-    pub types: HashMap<String, Type>,
+    #[serde(flatten, skip_serializing_if = "LinkedHashMap::is_empty")]
+    pub types: LinkedHashMap<String, Type>,
 }
 
 /// Wrap the namespace into a wrapper struct to match the serialization format of protobuf.js
@@ -70,9 +71,9 @@ impl Namespace {
         Self {
             path: path.into_path(),
             imports: HashSet::new(),
-            nested: HashMap::new(),
-            types: HashMap::new(),
-            services: HashMap::new(),
+            nested: BTreeMap::new(),
+            types: LinkedHashMap::new(),
+            services: LinkedHashMap::new(),
         }
     }
 
@@ -204,7 +205,9 @@ impl Namespace {
 
 #[cfg(test)]
 mod tests {
-    use crate::{message::Message, namespace::Namespace};
+    use std::path::PathBuf;
+
+    use crate::{message::Message, metadata::Metadata, namespace::Namespace};
 
     #[test]
     fn test_add_child() {
@@ -223,7 +226,10 @@ mod tests {
     #[test]
     fn test_resolve_path() {
         let mut ns = Namespace::new("pb.foo.bar");
-        ns.add_message("Bar", Message::default());
+        let path: PathBuf = "test.proto".into();
+        let md = Metadata::new(path.into(), None, 1);
+
+        ns.add_message("Bar", Message::new(md));
         let path = ns.resolve_path("Bar".split('.'));
         assert_eq!(path, Some("pb.foo.bar.Bar".into()))
     }

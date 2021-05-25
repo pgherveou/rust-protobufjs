@@ -1,38 +1,54 @@
 use glob::glob;
 use protobuf::{namespace::Namespace, parser::Parser, ts_serializer};
 use std::array::IntoIter;
+use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
+use std::time::Instant;
 
 fn main() {
     let home = dirs::home_dir().unwrap();
     // let root_dir = home.join("src/rust-protobufjs/protos");
     let root_dir = home.join("src/idl/protos");
 
-    match parse(root_dir, "pb/lyft/hello/hello_world.proto") {
+    // match parse(root_dir.into(), "pb/lyft/hello/hello_world.proto") {
+    match parse(root_dir.into(), "**/*.proto") {
         Err(err) => println!("{}", err),
         Ok(_) => println!("Ok"),
     }
 }
 
 #[allow(dead_code)]
-fn parse(root_dir: PathBuf, pattern: &str) -> Result<Namespace, Box<dyn std::error::Error>> {
+fn parse(root_dir: Rc<Path>, pattern: &str) -> Result<Namespace, Box<dyn std::error::Error>> {
+    let start = Instant::now();
+
     let ignored_files = IntoIter::new([
-        root_dir.join("validate/validate.proto"),
-        root_dir.join("google/rpc/status.proto"),
-        root_dir.join("google/api/annotations.proto"),
-        root_dir.join("google/api/expr/v1alpha1/syntax.proto"),
+        "validate/validate.proto",
+        "google/rpc/status.proto",
+        "google/api/annotations.proto",
+        "google/api/expr/v1alpha1/syntax.proto",
     ])
-    .map(|file| (file, Namespace::default()))
+    .map(|file| {
+        let path: PathBuf = file.into();
+        (Rc::from(path.as_path()), Namespace::default())
+    })
     .collect();
 
     let pattern = root_dir.join(pattern);
     let entries = glob(pattern.to_string_lossy().as_ref())?;
 
-    let mut parser = Parser::new(root_dir, ignored_files);
+    let mut parser = Parser::new(root_dir.clone(), ignored_files);
     for entry in entries {
-        let file_name = entry?;
-        parser.parse_file(file_name)?;
+        let file_path = entry?;
+        let file_path = file_path.strip_prefix(root_dir.as_ref()).unwrap();
+        parser.parse_file(file_path.into())?;
     }
+
+    println!(
+        "Parsed {} files in {:?}",
+        parser.parsed_files.len(),
+        start.elapsed()
+    );
 
     let root = parser.build_root()?;
 
@@ -41,7 +57,10 @@ fn parse(root_dir: PathBuf, pattern: &str) -> Result<Namespace, Box<dyn std::err
     std::fs::write(output_file, output)?;
     println!("wrote {}", output_file);
 
-    let printer = ts_serializer::Printer::default();
+    let mut printer = ts_serializer::Printer::default();
+    printer.print_bubble_client = true;
+    printer.print_network_client = true;
+
     let output = printer.into_string(&root);
     let output_file = "/tmp/router.d.ts";
     std::fs::write(output_file, output)?;

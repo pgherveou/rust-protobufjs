@@ -1,91 +1,29 @@
-use crate::{field::FieldRule, message::Message, namespace::Namespace, r#enum::Enum, r#type::Type};
-use std::collections::HashMap;
+use indoc::formatdoc;
+
+use crate::{
+    field::FieldRule,
+    http_options::{HTTPErrorType, HTTPOptions},
+    message::Message,
+    metadata::Metadata,
+    namespace::Namespace,
+    r#enum::Enum,
+    r#type::Type,
+};
+use std::collections::BTreeMap;
 
 fn format_error_types(v: Vec<HTTPErrorType<'_>>) -> String {
     v.iter()
-        .map(|HTTPErrorType { code, type_name }| format!("[code: {}, body: {}]", code, type_name))
+        .map(|e| e.as_string())
         .collect::<Vec<_>>()
         .join(" | ")
-}
-
-struct HTTPErrorType<'a> {
-    code: &'a str,
-    type_name: &'a str,
-}
-
-struct HTTPOptions<'a> {
-    path: &'a str,
-    method: &'a str,
-    error_types: Vec<HTTPErrorType<'a>>,
-}
-
-impl<'a> HTTPOptions<'a> {
-    pub fn from(raw_options: &'a [Vec<String>]) -> Option<Self> {
-        let mut path = None;
-        let mut method = None;
-        let mut error_types = Vec::new();
-
-        for option in raw_options {
-            let option = option.iter().map(String::as_str).collect::<Vec<_>>();
-
-            match option[..] {
-                ["pgm.http.rule", mthod, pth] => {
-                    path.replace(pth);
-                    method.replace(mthod);
-                }
-                ["pgm.error.rule", "default_error_type", type_name, ..] => {
-                    error_types.push(HTTPErrorType {
-                        code: "number",
-                        type_name,
-                    });
-
-                    for error_override in option[3..].chunks(5) {
-                        match error_override {
-                            ["error_override", "type", type_name, "code", code]
-                            | ["error_override", "code", code, "type", type_name] => {
-                                error_types.push(HTTPErrorType { code, type_name });
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                ["http.http_options", ".path", v] => {
-                    path.replace(v);
-                }
-                ["http.http_options", ".method", v] => {
-                    method.replace(v);
-                }
-                ["http.http_options", ".error_type", type_name] => {
-                    error_types.push(HTTPErrorType {
-                        code: "number",
-                        type_name,
-                    });
-                }
-                ["http.http_options", ".error_overrides", "code", code, "type", type_name]
-                | ["http.http_options", ".error_overrides", "type", type_name, "code", code] => {
-                    error_types.push(HTTPErrorType { code, type_name });
-                }
-
-                _ => {}
-            }
-        }
-
-        match (path, method) {
-            (Some(path), Some(method)) => Some(HTTPOptions {
-                path,
-                method,
-                error_types,
-            }),
-            _ => None,
-        }
-    }
 }
 
 #[derive(Default)]
 pub struct Printer {
     buffer: String,
-    print_bubble_client: bool,
-    print_network_client: bool,
+    root_url: String,
+    pub print_bubble_client: bool,
+    pub print_network_client: bool,
 }
 
 impl Printer {
@@ -115,13 +53,16 @@ impl Printer {
 
     fn write_bubble_client_types(&mut self, ns: &Namespace) {
         for (ns_name, ns) in ns.nested.iter() {
-            for service in ns.services.values() {
+            for (name, service) in ns.services.iter() {
+                self.print_comment(&service.md, name);
+
                 for (method_name, rpc) in service.methods.iter() {
+                    self.print_comment(&rpc.md, method_name);
                     let req = rpc_type(rpc.request_type.borrow().as_str(), rpc.request_stream);
                     let resp = rpc_type(rpc.response_type.borrow().as_str(), rpc.response_stream);
 
                     self.println(
-                    match HTTPOptions::from(&rpc.options) {
+                    match HTTPOptions::from(&rpc.md.options) {
                         Some(HTTPOptions{path, method, error_types}) => {
                             format!("{method}(path: '{path}', handler: RouteHandler<{req}, {resp}, {code_error_tuples}>): void", 
                             method = method.to_lowercase(),
@@ -146,11 +87,31 @@ impl Printer {
 
     fn write_network_client_types(&mut self, ns: &Namespace) {
         for (ns_name, ns) in ns.nested.iter() {
-            for service in ns.services.values() {
+            for (name, service) in ns.services.iter() {
+                self.print_comment(&service.md, name);
+
                 for (method_name, rpc) in service.methods.iter() {
+                    self.print_comment(&service.md, method_name);
                     let req = rpc_type(rpc.request_type.borrow().as_str(), rpc.request_stream);
                     let resp = rpc_type(rpc.response_type.borrow().as_str(), rpc.response_stream);
-                    self.println(format!("grpc(path: '/{}/{}', handler: RouteHandler<{}, {}, [code: number, body: string]>): void", ns_name, method_name, req, resp));
+
+                    self.println(
+                        match HTTPOptions::from(&rpc.md.options) {
+                            Some(HTTPOptions{path, method, ..}) => {
+                                // post(path: '/foo'): HTTPResource<pb.lyft.hello.SayHelloRequest, pb.lyft.hello.SayHelloResponse>
+                                format!("{method}(path: '{path}'): HTTPResource<{req}, {resp}>)", 
+                                method = method.to_lowercase(),
+                                path = path,
+                                req = req, resp = resp,
+                                )
+                            }
+                            None => {
+                                format!("grpc(path: '/{}/{}', handler: RouteHandler<{}, {}, [code: number, body: string]>): void",                                
+                                ns_name = ns_name,
+                                method_name = method_name,
+                                req = req, resp = resp)
+                            }
+                        });
                 }
             }
 
@@ -158,23 +119,25 @@ impl Printer {
         }
     }
 
-    fn write_namespaces(&mut self, namespaces: &HashMap<String, Namespace>) {
+    fn write_namespaces(&mut self, namespaces: &BTreeMap<String, Namespace>) {
         for (name, ns) in namespaces {
             self.println(format!("namespace {} {{", name));
-            self.write_types(&ns.types);
+            self.write_types(ns.types.iter());
             self.write_namespaces(&ns.nested);
             self.println("}");
         }
     }
 
-    fn write_types(&mut self, types: &HashMap<String, Type>) {
-        for (name, t) in types.iter() {
+    fn write_types<'a>(&mut self, types: impl Iterator<Item = (&'a String, &'a Type)>) {
+        for (name, t) in types {
             match t {
                 Type::Message(msg) => {
+                    self.print_comment(&msg.md, name);
                     self.println(format!("interface {} {{", name));
                     self.write_message(msg, name);
                 }
                 Type::Enum(e) => {
+                    self.print_comment(&e.md, name);
                     self.println(format!("const enum {} {{", name));
                     self.write_enum(e);
                 }
@@ -195,7 +158,7 @@ impl Printer {
 
         if !msg.nested.is_empty() {
             self.println(format!("namespace {} {{", name));
-            self.write_types(&msg.nested);
+            self.write_types(msg.nested.iter());
             self.println("}");
         }
     }
@@ -210,6 +173,32 @@ impl Printer {
         self.buffer.push_str(value.as_ref());
         self.buffer.push('\n')
     }
+
+    fn print_comment(&mut self, md: &Metadata, default_text: &str) {
+        let text = comment_text(md, default_text).split('\n');
+        let text = text.collect::<Vec<_>>().join("\n * ");
+
+        let v = formatdoc! {"
+        /**
+         * {text}
+         * @link {url}{path}#{line}
+         */
+        ",
+        text = text,
+        url = self.root_url,
+        path = md.file_path.to_str().unwrap(),
+        line = md.line,
+        };
+
+        self.println(v);
+    }
+}
+
+fn comment_text<'a>(md: &'a Metadata, default: &'a str) -> &'a str {
+    md.comment
+        .as_ref()
+        .map(|cmt| cmt.text.as_str())
+        .unwrap_or(default)
 }
 
 fn rpc_type(type_name: &str, is_streaming: bool) -> String {

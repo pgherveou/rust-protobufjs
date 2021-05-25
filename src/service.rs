@@ -1,6 +1,8 @@
 use serde::Serialize;
 use std::{cell::RefCell, collections::HashMap};
 
+use crate::metadata::Metadata;
+
 /// utility function used by serde skip_serializing_if directive
 /// is_false is used to remove false boolean from the serialized output
 fn is_false(value: &bool) -> bool {
@@ -9,16 +11,28 @@ fn is_false(value: &bool) -> bool {
 
 /// Defines a rpc service
 /// [service] https://developers.google.com/protocol-buffers/docs/proto3#services
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Serialize)]
 pub struct Service {
     /// The list of rpc methods defined by this service
     pub methods: HashMap<String, Rpc>,
+
+    /// metadata associated to the Enum
+    #[serde(skip_serializing)]
+    pub md: Metadata,
 }
 
 impl Service {
     /// Add a new rpc method
     pub fn add_rpc(&mut self, name: String, rpc: Rpc) {
         self.methods.insert(name, rpc);
+    }
+
+    // Returns a new Service with the provided metadata
+    pub fn new(md: Metadata) -> Self {
+        Self {
+            methods: HashMap::new(),
+            md,
+        }
     }
 }
 
@@ -27,8 +41,6 @@ impl Service {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Rpc {
-    // #[serde(skip_serializing, skip_deserializing)]
-    // name: String,
     /// The rpc request type
     pub request_type: RefCell<String>,
 
@@ -43,8 +55,9 @@ pub struct Rpc {
     #[serde(skip_serializing_if = "is_false")]
     pub response_stream: bool,
 
-    // a list of options associated with this method
-    pub options: Vec<Vec<String>>,
+    /// metadata associated to the Enum
+    #[serde(skip_serializing)]
+    pub md: Metadata,
 }
 
 impl Rpc {
@@ -54,14 +67,14 @@ impl Rpc {
         request_stream: bool,
         response_type: String,
         response_stream: bool,
-        options: Vec<Vec<String>>,
+        md: Metadata,
     ) -> Self {
         Self {
             request_type: RefCell::new(request_type),
             request_stream,
             response_type: RefCell::new(response_type),
             response_stream,
-            options,
+            md,
         }
     }
 }
