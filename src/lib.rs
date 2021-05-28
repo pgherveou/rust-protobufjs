@@ -3,6 +3,8 @@
 #![feature(iter_intersperse)]
 #![feature(map_try_insert)]
 
+extern crate lazy_static;
+
 mod comment;
 mod r#enum;
 mod field;
@@ -21,7 +23,8 @@ pub mod parser;
 mod position;
 mod scalar;
 mod service;
+pub mod service_map;
 mod token;
 mod tokenizer;
-pub mod ts_serializer;
 mod r#type;
+pub mod typescript;

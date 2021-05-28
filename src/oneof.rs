@@ -7,7 +7,7 @@ use crate::metadata::Metadata;
 #[derive(Debug, Serialize)]
 pub struct Oneof {
     #[serde(rename = "oneof")]
-    values: Vec<String>,
+    pub values: Vec<String>,
 
     /// metadata associated to the Enum
     #[serde(skip_serializing)]

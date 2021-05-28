@@ -15,7 +15,8 @@ pub trait ToPath {
 }
 
 impl ToPath for Vec<&str> {
-    fn to_path_string(self) -> String {
+    fn to_path_string(mut self) -> String {
+        self.insert(0, "");
         self.join(".")
     }
 }

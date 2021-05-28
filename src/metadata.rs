@@ -2,7 +2,7 @@ use std::{path::Path, rc::Rc};
 
 use crate::comment::Comment;
 
-type ProtoOption = Vec<String>;
+pub type ProtoOption = Vec<String>;
 
 #[derive(Debug)]
 pub struct Metadata {
@@ -31,5 +31,16 @@ impl Metadata {
 
     pub fn add_option(&mut self, option: ProtoOption) {
         self.options.push(option);
+    }
+
+    pub fn is_deprecated(&self) -> bool {
+        for option in self.options.iter() {
+            let mut iter = option.iter();
+            if iter.any(|v| v == "deprecated") {
+                return iter.next().map(|v| v == "true").unwrap_or(false);
+            }
+        }
+
+        false
     }
 }

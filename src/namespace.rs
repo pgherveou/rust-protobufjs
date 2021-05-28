@@ -127,10 +127,14 @@ impl Namespace {
             ..
         } = child;
 
-        for key in path.into_iter() {
-            ptr = ptr.nested.entry(key).or_insert_with(Namespace::default)
+        for key in path.iter() {
+            ptr = ptr
+                .nested
+                .entry(key.into())
+                .or_insert_with(Namespace::default)
         }
 
+        ptr.path = path;
         ptr.types.extend(types);
         ptr.services.extend(services);
     }
