@@ -7,6 +7,7 @@ use convert_case::{Case, Casing};
 use std::{
     borrow::Cow,
     collections::{BTreeMap, HashSet},
+    fmt::Write,
 };
 
 /// PrintOptions let us configure How we want to print a Proto tree into a Typescript definition file
@@ -16,11 +17,57 @@ pub struct PrintConfig {
     pub print_network_client: bool,
 }
 
+/// Printer serialize a Proto namespace into an internal buffer
 pub struct Printer<'a> {
+    /// The internal buffer used to build the TS definition
     buffer: String,
+
+    /// Reference to the configuration
     config: &'a PrintConfig,
+
+    /// List of extra types or imports to be added to the final output
     includes: HashSet<&'static str>,
+
+    /// The indent level
     indent: usize,
+}
+
+/// write! wrapper that write to the printer buffer
+macro_rules! writeln {
+    ($printer:ident, $v:expr) => {{
+        for _ in 0..$printer.indent {
+            $printer.buffer.push(' ');
+        }
+
+        $printer.buffer.push_str($v);
+        $printer.buffer.push('\n');
+    }};
+    ($printer:ident, $($arg:tt)*) => {{
+        // print indent
+        for _ in 0..$printer.indent {
+            $printer.buffer.push(' ');
+        }
+
+        // print formatted string & newline
+        write!(&mut $printer.buffer, $($arg)*).expect("Not written");
+        $printer.buffer.push('\n')
+    }};
+}
+
+/// write! wrapper that write and indent the printer
+macro_rules! writeln_and_indent {
+    ($printer:ident, $($arg:tt)*) => {{
+        writeln!($printer, $($arg)*);
+        $printer.indent += 2;
+    }};
+}
+
+/// write! wrapper that outdent and write into the printer
+macro_rules! outdent_and_writeln {
+    ($printer:ident, $($arg:tt)*) => {{
+        $printer.indent -= 2;
+        writeln!($printer, $($arg)*);
+    }};
 }
 
 impl<'a> Printer<'a> {
@@ -45,30 +92,33 @@ impl<'a> Printer<'a> {
         types_printer.write_namespaces(&root.nested);
 
         // write services definitions
-        write_services(root, &mut |ns, method_name, rpc| {
+        for_each_rpc(root, &mut |ns, method_name, rpc| {
             network_client_printer.write_network_client_rpc(ns, method_name, rpc);
             bubble_client_printer.write_bubble_client_rpc(ns, method_name, rpc);
         });
 
-        // add network client import or throw away
-        if network_client_printer.config.print_network_client
-            && !network_client_printer.buffer.is_empty()
-        {
-            includes.insert(NETWORK_CLIENT_IMPORT);
-        } else {
-            network_client_printer.buffer.clear()
+        // keep services definition that are defined in the config
+        // and insert related import statements
+        for (import, printer, enable) in [
+            (
+                NETWORK_CLIENT_IMPORT,
+                &mut network_client_printer,
+                self.config.print_network_client,
+            ),
+            (
+                BUBBLE_CLIENT_IMPORT,
+                &mut bubble_client_printer,
+                self.config.print_bubble_client,
+            ),
+        ] {
+            if enable && !printer.buffer.is_empty() {
+                includes.insert(import);
+            } else {
+                printer.buffer.clear()
+            }
         }
 
-        // add bubbke client import or throw away
-        if bubble_client_printer.config.print_bubble_client
-            && !bubble_client_printer.buffer.is_empty()
-        {
-            includes.insert(BUBBLE_CLIENT_IMPORT);
-        } else {
-            network_client_printer.buffer.clear()
-        }
-
-        // gather includes
+        // gather all includes
         for printer in [
             &bubble_client_printer,
             &network_client_printer,
@@ -84,37 +134,36 @@ impl<'a> Printer<'a> {
             NETWORK_CLIENT_IMPORT,
         ])
         .filter(|import| includes.contains(import))
-        .for_each(|import| self.println(import));
+        .for_each(|import| writeln!(self, import));
 
         // print @lyft/bubble-client definitions
         if !bubble_client_printer.buffer.is_empty() {
-            self.println_and_indent("declare module '@lyft/bubble-client' {");
-            self.println_and_indent("interface Router {");
+            writeln_and_indent!(self, "declare module '@lyft/bubble-client' {");
+            writeln_and_indent!(self, "interface Router {");
             self.append(bubble_client_printer);
-            self.outdent_and_println("}");
-            self.outdent_and_println("}");
+            outdent_and_writeln!(self, "}");
+            outdent_and_writeln!(self, "}");
         }
 
-        // print @lyft/network-client definitions into package_printer
+        // print @lyft/network-client definitions
         if !network_client_printer.buffer.is_empty() {
-            self.println_and_indent("declare module '@lyft/network-client' {");
-            self.println_and_indent("interface NetworkClient {");
+            writeln_and_indent!(self, "declare module '@lyft/network-client' {");
+            writeln_and_indent!(self, "interface NetworkClient {");
             self.append(network_client_printer);
-            self.outdent_and_println("}");
-            self.outdent_and_println("}");
+            outdent_and_writeln!(self, "}");
+            outdent_and_writeln!(self, "}");
         }
 
-        self.println("declare global {");
+        writeln!(self, "declare global {");
 
         // print global types from includes
         std::array::IntoIter::new([&LONG_LIKE_TYPE, &ANY_TYPE, &EMPTY])
             .filter(|val| includes.contains(*val))
-            .for_each(|val| self.println(val));
+            .for_each(|val| writeln!(self, val));
 
         self.add_blank_line();
         self.append(types_printer);
-        self.println("}");
-
+        writeln!(self, "}");
         self.buffer
     }
 
@@ -127,29 +176,39 @@ impl<'a> Printer<'a> {
         let resp = rpc.response_type.borrow();
         let resp = self.rpc_type(resp.as_str(), rpc.response_stream);
 
-        self.println(
-                    match HTTPOptions::from(&rpc.md.options) {
-                        Some(HTTPOptions{path, method, error_types}) => {
-                            // TODO handle empty error_types
-                            let code_error_tuples = error_types.iter()
-                                .map(|e| e.as_string())
-                                .collect::<Vec<_>>()
-                                .join(" | ");
+        match HTTPOptions::from(&rpc.md.options) {
+            Some(HTTPOptions {
+                path,
+                method,
+                error_types,
+            }) => {
+                let code_error_tuples = error_types
+                    .iter()
+                    .map(|e| e.as_string())
+                    .collect::<Vec<_>>()
+                    .join(" | ");
 
-                            format!("{method}(path: '{path}', handler: RouteHandler<{req}, {resp}, {code_error_tuples}>): void", 
-                            method = method.to_lowercase(),
-                            path = path,
-                            req = req, resp = resp,
-                            code_error_tuples = code_error_tuples
-                            )
-                        },
-                        None => {
-                            format!("grpc(path: '/{ns_name}/{method_name}', handler: RouteHandler<{req}, {resp}, [code: number, body: string]>): void", 
-                            ns_name = ns.path.join("."),
-                            method_name = method_name,
-                            req = req, resp = resp)
-                        }
-                    });
+                writeln_and_indent!(self, "{}(", method.to_lowercase());
+                writeln!(self, "path: '{}',", path);
+
+                writeln!(
+                    self,
+                    "handler: RouteHandler<{}, {}, {}>",
+                    req, resp, code_error_tuples,
+                );
+                outdent_and_writeln!(self, "): void");
+            }
+            None => {
+                writeln_and_indent!(self, "grpc(");
+                writeln!(self, "path: '/{}/{}',", ns.path.join("."), method_name);
+                writeln!(
+                    self,
+                    "handler: RouteHandler<{}, {}, [code: number, body: string]>",
+                    req, resp
+                );
+                outdent_and_writeln!(self, "): void");
+            }
+        }
     }
 
     /// Write @lyft/network-client typescript definitions
@@ -161,31 +220,33 @@ impl<'a> Printer<'a> {
         let resp = self.rpc_type(resp.as_str(), rpc.response_stream);
 
         self.print_comment(&rpc.md, true);
-        self.println(
-            match HTTPOptions::from(&rpc.md.options) {
-                Some(HTTPOptions{path, method, ..}) => {
-                    format!("{method}(path: '{path}'): HTTPResource<{req}, {resp}>", 
-                    method = method.to_lowercase(),
-                    path = path,
-                    req = req, resp = resp,
-                    )
-                }
-                None => {
-                    format!("grpc(path: '/{}/{}', handler: GRPCResource<{}, {}, [code: number, body: string]>): void",                                
-                    ns_name = ns.path.join("."),
-                    method_name = method_name,
-                    req = req, resp = resp)
-                }
-            });
+
+        match HTTPOptions::from(&rpc.md.options) {
+            Some(HTTPOptions { path, method, .. }) => {
+                writeln_and_indent!(self, "{method}(", method = method.to_lowercase());
+                writeln!(self, "path: '{path}'", path = path);
+                outdent_and_writeln!(self, "): HTTPResource<{}, {}>", req, resp);
+            }
+            None => {
+                writeln_and_indent!(self, "grpc(");
+                writeln!(self, "path: '/{}/{}'", ns.path.join("."), method_name);
+                outdent_and_writeln!(
+                    self,
+                    "): GRPCResource<{}, {}, [code: number, body: string]>): void",
+                    req,
+                    resp
+                );
+            }
+        }
     }
 
     /// Write namespace typescript definitions
     fn write_namespaces(&mut self, namespaces: &'a BTreeMap<String, Namespace>) {
         for (name, ns) in namespaces {
-            self.println_and_indent(format!("namespace {} {{", name));
+            writeln_and_indent!(self, "namespace {} {{", name);
             self.write_types(ns.types.iter());
             self.write_namespaces(&ns.nested);
-            self.outdent_and_println("}");
+            outdent_and_writeln!(self, "}");
         }
     }
 
@@ -199,9 +260,9 @@ impl<'a> Printer<'a> {
                 }
                 Type::Enum(e) => {
                     self.print_comment(&e.md, true);
-                    self.println_and_indent(format!("const enum {} {{", name));
+                    writeln_and_indent!(self, "const enum {} {{", name);
                     self.write_enum(e);
-                    self.outdent_and_println("}");
+                    outdent_and_writeln!(self, "}");
                 }
             }
         }
@@ -227,35 +288,37 @@ impl<'a> Printer<'a> {
             };
 
             printer.print_comment(&field.md, false);
-            printer.println(match (&field.key_type, &field.rule) {
+            match (&field.key_type, &field.rule) {
                 (Some(key), _) => {
-                    format!("{}?: {{ [key: {}]: {} }}", name, key, type_name)
+                    writeln!(printer, "{}?: {{ [key: {}]: {} }}", name, key, type_name);
                 }
                 (None, Some(FieldRule::Repeated)) => {
-                    format!("{}?: Array<{}>", name, type_name)
+                    writeln!(printer, "{}?: Array<{}>", name, type_name);
                 }
-                (None, _) => format!("{}?: {}", name, type_name),
-            });
+                (None, _) => writeln!(printer, "{}?: {}", name, type_name),
+            };
         }
 
         match generic_constraints.len() {
             0 => match msg.fields.len() {
                 0 => {
                     self.includes.insert(EMPTY);
-                    self.println(format!("interface {} extends Empty {{", msg_name))
+                    writeln!(self, "interface {} extends Empty {{", msg_name)
                 }
-                _ => self.println(format!("interface {} {{", msg_name)),
+                _ => writeln!(self, "interface {} {{", msg_name),
             },
-            _ => self.println(format!(
+            _ => writeln!(
+                self,
                 "interface {}<{}> {{",
                 msg_name,
                 generic_constraints.join(",")
-            )),
+            ),
         }
 
         for (name, oneof) in msg.oneofs.iter() {
             printer.print_comment(&oneof.md, false);
-            printer.println(format!(
+            writeln!(
+                printer,
                 "{}?: Extract<keyof {}, {}>",
                 name,
                 msg_name,
@@ -265,24 +328,24 @@ impl<'a> Printer<'a> {
                     .map(|v| format!("'{}'", v))
                     .collect::<Vec<_>>()
                     .join(" | ")
-            ));
+            );
         }
 
         self.includes.extend(&printer.includes);
         self.append(printer);
-        self.println("}");
+        writeln!(self, "}");
 
         if !msg.nested.is_empty() {
-            self.println_and_indent(format!("namespace {} {{", msg_name));
+            writeln_and_indent!(self, "namespace {} {{", msg_name);
             self.write_types(msg.nested.iter());
-            self.outdent_and_println("}");
+            outdent_and_writeln!(self, "}");
         }
     }
 
     /// Write a Proto enum typescript definitions
     fn write_enum(&mut self, e: &Enum) {
         for (name, value) in e.values.iter() {
-            self.println(format!("{} = {},", name, value));
+            writeln!(self, "{} = {},", name, value);
         }
     }
 
@@ -294,27 +357,6 @@ impl<'a> Printer<'a> {
             config: self.config,
             indent,
         }
-    }
-
-    /// Print the content with a newline
-    fn println<T: AsRef<str>>(&mut self, value: T) {
-        for _ in 0..self.indent {
-            self.buffer.push(' ');
-        }
-        self.buffer.push_str(value.as_ref());
-        self.buffer.push('\n')
-    }
-
-    /// Print the content with a newline and increment indent
-    fn println_and_indent<T: AsRef<str>>(&mut self, value: T) {
-        self.println(value);
-        self.indent += 2;
-    }
-
-    /// decrement indent and print the content with a newline
-    fn outdent_and_println<T: AsRef<str>>(&mut self, value: T) {
-        self.indent -= 2;
-        self.println(value);
     }
 
     /// Print a blank line
@@ -370,12 +412,12 @@ impl<'a> Printer<'a> {
         }
 
         self.add_blank_line();
-        self.println("/**");
+        writeln!(self, "/**");
         for line in lines {
-            self.println(format!(" *{}", line))
+            writeln!(self, " *{}", line)
         }
 
-        self.println(" */");
+        writeln!(self, " */");
     }
 
     /// Helper function that returns the type or the mapped Typescript if it exists
@@ -402,17 +444,137 @@ impl<'a> Printer<'a> {
     }
 }
 
-fn write_services<'a, F>(ns: &'a Namespace, writer: &mut F)
+// Helper function that execute recursively for each rpc in a namespace
+fn for_each_rpc<'a, F>(ns: &'a Namespace, callback: &mut F)
 where
     F: FnMut(&'a Namespace, &'a str, &'a Rpc),
 {
     for ns in ns.nested.values() {
         for service in ns.services.values() {
             for (method_name, rpc) in service.methods.iter() {
-                writer(ns, method_name, rpc)
+                callback(ns, method_name, rpc)
             }
         }
 
-        write_services(ns, writer);
+        for_each_rpc(ns, callback);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        parser::test_util::parse_test_file,
+        typescript::serializer::{PrintConfig, Printer},
+    };
+    use indoc::indoc;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_generate_typescript_definition() {
+        let root = parse_test_file(indoc! {r#"
+        package pb.hello;
+        
+        service HelloWorld {
+          rpc LotsOfGreetings(stream SayHelloRequest) returns (SayHelloResponses) {}
+          rpc SayHello (SayHelloRequest) returns (SayHelloResponse) {
+              option (pgm.http.rule) = { GET: "/hello/<string:name>" };
+          }
+        }
+        
+        message SayHelloRequest {
+          string name = 1;
+        }
+        
+        message SayHelloResponse {
+          string hello = 1;
+        }
+        
+        message SayHelloResponses {
+          repeated SayHelloResponse responses = 1;
+        }
+        "#});
+
+        let config = PrintConfig {
+            root_url: "https://github.com/lyft/idl/blob/master/protos".into(),
+            print_bubble_client: true,
+            print_network_client: true,
+        };
+
+        let printer = Printer::new(&config);
+        let output = printer.into_string(&root);
+
+        let result = indoc! {r#"
+        import { Observable } from 'rxjs'
+        import { RouteHandler } from '@lyft/bubble-client'
+        import { GRPCResource, HTTPResource } from '@lyft/network-client'
+        declare module '@lyft/bubble-client' {
+          interface Router {
+        
+            /**
+             * @link https://github.com/lyft/idl/blob/master/protos/test.proto#4
+             */
+            grpc(
+              path: '/pb.hello/LotsOfGreetings',
+              handler: RouteHandler<Observable<pb.hello.SayHelloRequest>, pb.hello.SayHelloResponses, [code: number, body: string]>
+            ): void
+        
+            /**
+             * @link https://github.com/lyft/idl/blob/master/protos/test.proto#5
+             */
+            get(
+              path: '/hello/:name',
+              handler: RouteHandler<pb.hello.SayHelloRequest, pb.hello.SayHelloResponse, [code: number, body: unknown]>
+            ): void
+          }
+        }
+        declare module '@lyft/network-client' {
+          interface NetworkClient {
+        
+            /**
+             * @link https://github.com/lyft/idl/blob/master/protos/test.proto#4
+             */
+            grpc(
+              path: '/pb.hello/LotsOfGreetings'
+            ): GRPCResource<Observable<pb.hello.SayHelloRequest>, pb.hello.SayHelloResponses, [code: number, body: string]>): void
+        
+            /**
+             * @link https://github.com/lyft/idl/blob/master/protos/test.proto#5
+             */
+            get(
+              path: '/hello/:name'
+            ): HTTPResource<pb.hello.SayHelloRequest, pb.hello.SayHelloResponse>
+          }
+        }
+        declare global {
+        
+          namespace pb {
+            namespace hello {
+        
+              /**
+               * @link https://github.com/lyft/idl/blob/master/protos/test.proto#10
+               */
+              interface SayHelloRequest {
+                name?: string
+              }
+        
+              /**
+               * @link https://github.com/lyft/idl/blob/master/protos/test.proto#14
+               */
+              interface SayHelloResponse {
+                hello?: string
+              }
+        
+              /**
+               * @link https://github.com/lyft/idl/blob/master/protos/test.proto#18
+               */
+              interface SayHelloResponses {
+                responses?: Array<pb.hello.SayHelloResponse>
+              }
+            }
+          }
+        }
+        "#};
+
+        assert_eq!(output, result);
     }
 }

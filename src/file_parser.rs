@@ -135,7 +135,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     /// package foo.bar;
     /// ```
     ///
-    /// [package] https://developers.google.com/protocol-buffers/docs/proto3#packages
+    /// [package]: https://developers.google.com/protocol-buffers/docs/proto3#packages
     fn parse_package(&mut self) -> Result<(), ParseError> {
         if !self.namespace.path.is_empty() {
             return Err(ParseError::PackageAlreadySet);
@@ -153,7 +153,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     /// import "myproject/other_protos.proto";
     /// ```
     ///
-    /// [import] https://developers.google.com/protocol-buffers/docs/proto3#importing_definitions
+    /// [import]: https://developers.google.com/protocol-buffers/docs/proto3#importing_definitions
     fn parse_import(&mut self) -> Result<(), ParseError> {
         let import = match self.next()? {
             Token::Public => {
@@ -181,7 +181,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     /// syntax = "proto3";
     /// ```
     ///
-    /// [syntax] https://developers.google.com/protocol-buffers/docs/proto3#simple
+    /// [syntax]: https://developers.google.com/protocol-buffers/docs/proto3#simple
     fn parse_syntax(&mut self) -> Result<String, ParseError> {
         self.expect_token(Token::Eq)?;
         let version = self.read_quoted_string()?;
@@ -192,7 +192,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     /// Parse [option] statement    
     /// Note: we currently simply parse an option as a list of identifiers
     ///
-    /// [option] https://developers.google.com/protocol-buffers/docs/proto3#options
+    /// [option]: https://developers.google.com/protocol-buffers/docs/proto3#options
     fn parse_option(&mut self) -> Result<Vec<String>, ParseError> {
         let mut values = Vec::new();
         loop {
@@ -221,7 +221,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     /// }
     /// ```
     ///
-    /// [message] https://developers.google.com/protocol-buffers/docs/proto3#simple
+    /// [message]: https://developers.google.com/protocol-buffers/docs/proto3#simple
     fn parse_message(&mut self) -> Result<(String, Message), ParseError> {
         let message_name = self.read_identifier()?;
         self.expect_token(Token::LBrace)?;
@@ -302,7 +302,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     /// }
     /// ```
     ///
-    /// [service] https://developers.google.com/protocol-buffers/docs/proto3#services
+    /// [service]: https://developers.google.com/protocol-buffers/docs/proto3#services
     fn parse_service(&mut self) -> Result<(String, Service), ParseError> {
         let name = self.read_identifier()?;
         let mut service = Service::new(self.metadata());
@@ -344,7 +344,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     /// rpc Search(SearchRequest) returns (SearchResponse);
     /// ```
     ///
-    /// [rpc] https://developers.google.com/protocol-buffers/docs/proto3#services
+    /// [rpc]: https://developers.google.com/protocol-buffers/docs/proto3#services
     fn parse_rpc(&mut self) -> Result<(String, Rpc), ParseError> {
         let name = self.read_identifier()?;
         let mut md = self.metadata();
@@ -414,7 +414,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     /// string query = 1;
     /// ```
     ///
-    /// [message] https://developers.google.com/protocol-buffers/docs/proto3#specifying_field_rules
+    /// [message]: https://developers.google.com/protocol-buffers/docs/proto3#specifying_field_rules
     fn parse_message_field(
         &mut self,
         type_name: String,
@@ -450,7 +450,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     /// }
     /// ```
     ///
-    /// [enum] https://developers.google.com/protocol-buffers/docs/proto3#enum
+    /// [enum]: https://developers.google.com/protocol-buffers/docs/proto3#enum
     fn parse_enum(&mut self) -> Result<(String, Enum), ParseError> {
         let enum_name = self.read_identifier()?;
         let mut e = Enum::new(self.metadata());
@@ -509,7 +509,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     /// reserved 2, 15, 9 to 11;
     /// ```
     ///
-    /// [reserved] https://developers.google.com/protocol-buffers/docs/proto3#reserved
+    /// [reserved]: https://developers.google.com/protocol-buffers/docs/proto3#reserved
     fn parse_reserved(&mut self) -> Result<(), ParseError> {
         self.tokenizer.skip_until_token(Token::Semi)?;
         Ok(())
@@ -523,7 +523,7 @@ impl<I: Iterator<Item = char>> FileParser<I> {
     /// extensions 100 to 199;
     /// ```
     ///
-    /// [extension] https://developers.google.com/protocol-buffers/docs/proto#extensions
+    /// [extension]: https://developers.google.com/protocol-buffers/docs/proto#extensions
     fn parse_extensions(&mut self) -> Result<(), ParseError> {
         self.tokenizer.skip_until_token(Token::Semi)?;
         Ok(())
@@ -557,7 +557,6 @@ impl<I: Iterator<Item = char>> FileParser<I> {
 
 #[cfg(test)]
 mod tests {
-
     use super::FileParser;
     use std::path::PathBuf;
 

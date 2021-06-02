@@ -1,9 +1,0 @@
-syntax = "proto3";
-
-package pb.example.two;
-
-message Two {
-  message TwoNested {      
-  }
-}
-

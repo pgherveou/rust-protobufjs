@@ -1,12 +1,16 @@
 use crate::{
     file_parser::FileParser, import::Import, namespace::Namespace, parse_error::ParseFileError,
 };
-use std::{collections::HashMap, path::Path, rc::Rc};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 /// The parser parse files and populate the root namespace
 pub struct Parser {
     /// The root directory used to resolve import statements
-    root_dir: Rc<Path>,
+    root_dir: PathBuf,
 
     /// List of parsed files
     pub parsed_files: HashMap<Rc<Path>, Namespace>,
@@ -14,10 +18,18 @@ pub struct Parser {
 
 impl Parser {
     /// Returns a new parser with the given root directory and a list of files we want to ignore    
-    pub fn new(root_dir: Rc<Path>, parsed_files: HashMap<Rc<Path>, Namespace>) -> Self {
+    pub fn new(root_dir: PathBuf) -> Self {
         Self {
             root_dir,
-            parsed_files,
+            parsed_files: HashMap::new(),
+        }
+    }
+
+    pub fn ignore_files(&mut self, files: &[&str]) {
+        for file in files {
+            let path = PathBuf::from(file);
+            self.parsed_files
+                .insert(Rc::from(path.as_path()), Namespace::default());
         }
     }
 
@@ -98,5 +110,57 @@ impl Parser {
                 Import::Internal(_) => Vec::new(),
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+pub mod test_util {
+    use crate::{file_parser::FileParser, namespace::Namespace, parser::Parser};
+    use std::{
+        path::{Path, PathBuf},
+        rc::Rc,
+    };
+
+    pub fn parse_test_file(text: &'static str) -> Namespace {
+        let file_path: PathBuf = "test.proto".into();
+        let file_path: Rc<Path> = file_path.into();
+        let file_parser = FileParser::new(file_path.clone(), text.chars());
+
+        let ns = file_parser
+            .parse()
+            .expect("parse test.proto without errors");
+
+        let root_dir: PathBuf = ".".into();
+        let mut parser = Parser::new(root_dir);
+        parser.parsed_files.insert(file_path.into(), ns);
+
+        parser
+            .build_root()
+            .expect("create root namespace without errors")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Parser;
+    use pretty_assertions::assert_eq;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_serialize_root() {
+        let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("protos");
+        let expected_output = std::fs::read_to_string(&root_dir.join("descriptors.json"))
+            .expect("descriptors.json should exist");
+
+        let mut parser = Parser::new(root_dir);
+
+        parser
+            .parse_file(PathBuf::from("foo.proto").into())
+            .expect("it should parse one.proto");
+
+        let root = parser.build_root().expect("it should build root");
+        let output = serde_json::to_string_pretty(&root).unwrap();
+
+        assert_eq!(output, expected_output)
     }
 }

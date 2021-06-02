@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use crate::metadata::Metadata;
 
 /// FieldRule represents a proto [field rule]
-/// [field rule] https://developers.google.com/protocol-buffers/docs/proto#specifying_field_rules
+/// [field rule]: https://developers.google.com/protocol-buffers/docs/proto#specifying_field_rules
 #[derive(Display, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum FieldRule {
@@ -20,7 +20,7 @@ pub enum FieldRule {
 }
 
 /// Field represents a proto message [field]
-/// [field] https://developers.google.com/protocol-buffers/docs/proto#specifying_field_types
+/// [field]: https://developers.google.com/protocol-buffers/docs/proto#specifying_field_types
 #[derive(Serialize, Debug)]
 pub struct Field {
     // The type of the field

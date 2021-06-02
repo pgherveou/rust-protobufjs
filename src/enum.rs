@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::metadata::Metadata;
 
 /// Enum defines a proto [emum]
-/// [enum] https://developers.google.com/protocol-buffers/docs/proto3#enum
+/// [enum]: https://developers.google.com/protocol-buffers/docs/proto3#enum
 #[derive(Debug, Serialize)]
 pub struct Enum {
     /// a map of name => field id

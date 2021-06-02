@@ -3,7 +3,7 @@ use serde::Serialize;
 use crate::metadata::Metadata;
 
 /// Oneof represents a proto [oneof] field
-/// [oneof] https://developers.google.com/protocol-buffers/docs/proto#oneof
+/// [oneof]: https://developers.google.com/protocol-buffers/docs/proto#oneof
 #[derive(Debug, Serialize)]
 pub struct Oneof {
     #[serde(rename = "oneof")]

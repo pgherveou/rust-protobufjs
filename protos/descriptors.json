@@ -1,0 +1,353 @@
+{
+  "nested": {
+    "pb": {
+      "nested": {
+        "example": {
+          "nested": {
+            "bar": {
+              "nested": {
+                "BarMsg1": {
+                  "fields": {},
+                  "nested": {
+                    "BarInnerMsg1": {
+                      "fields": {}
+                    }
+                  }
+                }
+              }
+            },
+            "foo": {
+              "nested": {
+                "FooService": {
+                  "methods": {
+                    "Foo1": {
+                      "requestType": ".pb.example.foo.FooMsg1",
+                      "responseType": ".pb.example.foo.FooMsg1"
+                    },
+                    "Foo2": {
+                      "requestType": ".pb.example.foo.FooMsg1.FooInnerMsg1",
+                      "responseType": ".pb.example.foo.FooMsg1"
+                    }
+                  }
+                },
+                "FooMsg1": {
+                  "fields": {
+                    "field1": {
+                      "type": "string",
+                      "id": 1
+                    },
+                    "field2_1": {
+                      "type": ".pb.example.foo.FooMsg2",
+                      "id": 21
+                    },
+                    "field2_2": {
+                      "type": ".pb.example.foo.FooMsg2",
+                      "id": 22
+                    },
+                    "field2_3": {
+                      "type": ".pb.example.foo.FooMsg2",
+                      "id": 23
+                    },
+                    "field2_4": {
+                      "type": ".pb.example.foo.FooMsg2",
+                      "id": 24
+                    },
+                    "field2_5": {
+                      "type": ".pb.example.foo.FooMsg2",
+                      "id": 25
+                    },
+                    "field3_1": {
+                      "type": ".pb.example.foo.FooEnum1",
+                      "id": 31
+                    },
+                    "field3_2": {
+                      "type": ".pb.example.foo.FooEnum1",
+                      "id": 32
+                    },
+                    "field3_3": {
+                      "type": ".pb.example.foo.FooEnum1",
+                      "id": 33
+                    },
+                    "field3_4": {
+                      "type": ".pb.example.foo.FooEnum1",
+                      "id": 34
+                    },
+                    "field3_5": {
+                      "type": ".pb.example.foo.FooEnum1",
+                      "id": 35
+                    },
+                    "field4_1": {
+                      "type": ".pb.example.foo.FooMsg1.FooInnerMsg1",
+                      "id": 41
+                    },
+                    "field4_2": {
+                      "type": ".pb.example.foo.FooMsg1.FooInnerMsg1",
+                      "id": 42
+                    },
+                    "field4_3": {
+                      "type": ".pb.example.foo.FooMsg1.FooInnerMsg1",
+                      "id": 43
+                    },
+                    "field4_4": {
+                      "type": ".pb.example.foo.FooMsg1.FooInnerMsg1",
+                      "id": 44
+                    },
+                    "field4_5": {
+                      "type": ".pb.example.foo.FooMsg1.FooInnerMsg1",
+                      "id": 45
+                    },
+                    "field4_6": {
+                      "type": ".pb.example.foo.FooMsg1.FooInnerMsg1",
+                      "id": 46
+                    },
+                    "field5_1": {
+                      "type": ".pb.example.foo.FooMsg1.FooInnerEnum1",
+                      "id": 51
+                    },
+                    "field5_2": {
+                      "type": ".pb.example.foo.FooMsg1.FooInnerEnum1",
+                      "id": 52
+                    },
+                    "field5_3": {
+                      "type": ".pb.example.foo.FooMsg1.FooInnerEnum1",
+                      "id": 53
+                    },
+                    "field5_4": {
+                      "type": ".pb.example.foo.FooMsg1.FooInnerEnum1",
+                      "id": 54
+                    },
+                    "field5_5": {
+                      "type": ".pb.example.foo.FooMsg1.FooInnerEnum1",
+                      "id": 55
+                    },
+                    "field5_6": {
+                      "type": ".pb.example.foo.FooMsg1.FooInnerEnum1",
+                      "id": 56
+                    },
+                    "field6_1": {
+                      "type": ".pb.example.bar.BarMsg1",
+                      "id": 61
+                    },
+                    "field6_2": {
+                      "type": ".pb.example.bar.BarMsg1",
+                      "id": 62
+                    },
+                    "field6_3": {
+                      "type": ".pb.example.bar.BarMsg1",
+                      "id": 63
+                    },
+                    "field6_4": {
+                      "type": ".pb.example.bar.BarMsg1",
+                      "id": 64
+                    },
+                    "field7_1": {
+                      "type": ".pb.example.bar.BarMsg1.BarInnerMsg1",
+                      "id": 71
+                    },
+                    "field7_2": {
+                      "type": ".pb.example.bar.BarMsg1.BarInnerMsg1",
+                      "id": 72
+                    },
+                    "field7_3": {
+                      "type": ".pb.example.bar.BarMsg1.BarInnerMsg1",
+                      "id": 73
+                    },
+                    "field7_4": {
+                      "type": ".pb.example.bar.BarMsg1.BarInnerMsg1",
+                      "id": 74
+                    },
+                    "field8_1": {
+                      "type": ".pb.example.foo.FooMsg1.FooInnerMsg1.FooInnerX2Msg1",
+                      "id": 81
+                    },
+                    "field8_2": {
+                      "type": ".pb.example.foo.FooMsg1.FooInnerMsg1.FooInnerX2Msg1",
+                      "id": 82
+                    },
+                    "field8_3": {
+                      "type": ".pb.example.foo.FooMsg1.FooInnerMsg1.FooInnerX2Msg1",
+                      "id": 83
+                    },
+                    "field8_4": {
+                      "type": ".pb.example.foo.FooMsg1.FooInnerMsg1.FooInnerX2Msg1",
+                      "id": 84
+                    },
+                    "field8_5": {
+                      "type": ".pb.example.foo.FooMsg1.FooInnerMsg1.FooInnerX2Msg1",
+                      "id": 85
+                    },
+                    "field8_6": {
+                      "type": ".pb.example.foo.FooMsg1.FooInnerMsg1.FooInnerX2Msg1",
+                      "id": 86
+                    },
+                    "field9_1": {
+                      "type": ".pb.example.foo.FooMsg2.FooInnerMsg1.FooInnerX2Msg1",
+                      "id": 91
+                    },
+                    "field9_2": {
+                      "type": ".pb.example.foo.FooMsg2.FooInnerMsg1.FooInnerX2Msg1",
+                      "id": 92
+                    },
+                    "field9_3": {
+                      "type": ".pb.example.foo.FooMsg2.FooInnerMsg1.FooInnerX2Msg1",
+                      "id": 93
+                    },
+                    "field9_4": {
+                      "type": ".pb.example.foo.FooMsg2.FooInnerMsg1.FooInnerX2Msg1",
+                      "id": 94
+                    },
+                    "field9_5": {
+                      "type": ".pb.example.foo.FooMsg2.FooInnerMsg1.FooInnerX2Msg1",
+                      "id": 95
+                    },
+                    "field10_1": {
+                      "type": ".pb.example.foo.FooMsg2.FooInnerMsg1.FooInnerX2Msg1",
+                      "id": 101
+                    },
+                    "field10_2": {
+                      "type": ".pb.example.foo.FooMsg2.FooInnerMsg1.FooInnerX2Msg1",
+                      "id": 102
+                    },
+                    "field10_3": {
+                      "type": ".pb.example.foo.FooMsg2.FooInnerMsg1.FooInnerX2Msg1",
+                      "id": 103
+                    },
+                    "field10_4": {
+                      "type": ".pb.example.foo.FooMsg2.FooInnerMsg1.FooInnerX2Msg1",
+                      "id": 104
+                    },
+                    "field10_5": {
+                      "type": ".pb.example.foo.FooMsg2.FooInnerMsg1.FooInnerX2Msg1",
+                      "id": 105
+                    }
+                  },
+                  "nested": {
+                    "FooInnerMsg1": {
+                      "fields": {
+                        "field_l1_1": {
+                          "type": "string",
+                          "id": 1
+                        },
+                        "field_l1_21": {
+                          "type": ".pb.example.foo.FooMsg2",
+                          "id": 21
+                        },
+                        "one_other_22": {
+                          "type": ".pb.example.foo.FooMsg2",
+                          "id": 22
+                        },
+                        "one_other_23": {
+                          "type": ".pb.example.foo.FooMsg2",
+                          "id": 23
+                        },
+                        "one_other_24": {
+                          "type": ".pb.example.foo.FooMsg2",
+                          "id": 24
+                        },
+                        "one_other_25": {
+                          "type": ".pb.example.foo.FooMsg2",
+                          "id": 25
+                        },
+                        "field_l1_31": {
+                          "type": ".pb.example.foo.FooEnum1",
+                          "id": 31
+                        },
+                        "one_other_32": {
+                          "type": ".pb.example.foo.FooEnum1",
+                          "id": 32
+                        },
+                        "one_other_33": {
+                          "type": ".pb.example.foo.FooEnum1",
+                          "id": 33
+                        },
+                        "one_other_34": {
+                          "type": ".pb.example.foo.FooEnum1",
+                          "id": 34
+                        },
+                        "one_other_35": {
+                          "type": ".pb.example.foo.FooEnum1",
+                          "id": 35
+                        },
+                        "field_l1_41": {
+                          "type": ".pb.example.foo.FooMsg1.FooInnerMsg2",
+                          "id": 41
+                        },
+                        "field_l1_42": {
+                          "type": ".pb.example.foo.FooMsg1.FooInnerMsg2",
+                          "id": 42
+                        },
+                        "field_l1_43": {
+                          "type": ".pb.example.foo.FooMsg1.FooInnerMsg2",
+                          "id": 43
+                        },
+                        "field_l1_44": {
+                          "type": ".pb.example.foo.FooMsg1.FooInnerMsg2",
+                          "id": 44
+                        },
+                        "field_l1_45": {
+                          "type": ".pb.example.foo.FooMsg1.FooInnerMsg2",
+                          "id": 45
+                        },
+                        "field_l1_51": {
+                          "type": ".pb.example.foo.FooMsg1.FooInnerEnum1",
+                          "id": 51
+                        },
+                        "field_l1_52": {
+                          "type": ".pb.example.foo.FooMsg1.FooInnerEnum1",
+                          "id": 52
+                        },
+                        "field_l1_53": {
+                          "type": ".pb.example.foo.FooMsg1.FooInnerEnum1",
+                          "id": 53
+                        },
+                        "field_l1_54": {
+                          "type": ".pb.example.foo.FooMsg1.FooInnerEnum1",
+                          "id": 54
+                        },
+                        "field_l1_55": {
+                          "type": ".pb.example.foo.FooMsg1.FooInnerEnum1",
+                          "id": 55
+                        }
+                      },
+                      "nested": {
+                        "FooInnerX2Msg1": {
+                          "fields": {}
+                        }
+                      }
+                    },
+                    "FooInnerEnum1": {
+                      "values": {
+                        "ONE": 0
+                      }
+                    },
+                    "FooInnerMsg2": {
+                      "fields": {}
+                    }
+                  }
+                },
+                "FooMsg2": {
+                  "fields": {},
+                  "nested": {
+                    "FooInnerMsg1": {
+                      "fields": {},
+                      "nested": {
+                        "FooInnerX2Msg1": {
+                          "fields": {}
+                        }
+                      }
+                    }
+                  }
+                },
+                "FooEnum1": {
+                  "values": {
+                    "ONE": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

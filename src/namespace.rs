@@ -235,6 +235,6 @@ mod tests {
 
         ns.add_message("Bar", Message::new(md));
         let path = ns.resolve_path("Bar".split('.'));
-        assert_eq!(path, Some("pb.foo.bar.Bar".into()))
+        assert_eq!(path, Some(".pb.foo.bar.Bar".into()))
     }
 }

@@ -1,5 +1,6 @@
 /// Comment represents a [proto comment]
-/// [proto comment] https://developers.google.com/protocol-buffers/docs/proto#adding_comments
+///
+/// [proto comment]: https://developers.google.com/protocol-buffers/docs/proto#adding_comments
 #[derive(Debug, PartialEq)]
 pub enum CommentKind {
     StarSlash,

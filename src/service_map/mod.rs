@@ -1,32 +1,64 @@
+//! Generate a service map file from a Namespace, so we can quickly resolve request and response type for a given URL path
+//!
+//! # Example:
+//! Given the following proto file:
+//!
+//! ```proto
+//! package pb.hello;
+//!
+//! service HelloWorld {
+//!   rpc LotsOfGreetings(stream SayHelloRequest) returns (SayHelloResponses) {}
+//!   rpc SayHello (SayHelloRequest) returns (SayHelloResponse) {
+//!       option (pgm.http.rule) = { GET: "/hello/<string:name>" };
+//!   }
+//! }
+//! ```
+//!
+//! We will generate:
+//! ```json
+//! {
+//!   "pb.hello.HelloWorld": {
+//!     "LotsOfGreetings": {
+//!       "grpc": ["pb.hello.SayHelloRequest", "pb.hello.SayHelloResponses", "/pb.hello.HelloWorld/LotsOfGreetings"]
+//!     },
+//!     "hello": {
+//!       "*": {
+//!         "get": ["pb.hello.SayHelloRequest", "pb.hello.SayHelloResponse", "/hello/:name"]
+//!       }
+//!    }
+//! }
+//!```
+
 use crate::{http_options::HTTPOptions, namespace::Namespace, service::Rpc};
-use lazy_static::lazy_static;
-use regex::Regex;
 use serde::{Serialize, Serializer};
-use std::{borrow::Cow, cell::Cell, collections::BTreeMap};
+use std::{borrow::Cow, cell::Cell, collections::BTreeMap, vec};
 
-type ServiceMap<'a> = BTreeMap<Cow<'a, str>, ServiceMapOrType<'a>>;
+/// A service tree map is a tree where:
+///
+/// - branches are segments of the url with dynamic segments replaced by "*", the final segment is the method type (grpc, get, post, ...)
+/// - leaves are array [RequestTypeName, ResponseTypeName, URL]
+pub type ServiceTreeMap<'a> = BTreeMap<Cow<'a, str>, ServiceMapNode<'a>>;
 
+/// A branch or leaf of the service tree map
 #[derive(Serialize, Debug)]
 #[serde(untagged)]
-pub enum ServiceMapOrType<'a> {
-    ServiceMap(ServiceMap<'a>),
+pub enum ServiceMapNode<'a> {
+    Branch(ServiceTreeMap<'a>),
 
-    #[serde(serialize_with = "serialize_service")]
-    ServiceType {
+    #[serde(serialize_with = "serialize_leaf")]
+    Leaf {
         rpc: &'a Rpc,
         url: Cow<'a, str>,
     },
 }
 
+/// Remove the leading . from a type path
 fn no_leading_dot(s: &str) -> &str {
-    if s.starts_with(".") {
-        &s[1..]
-    } else {
-        s
-    }
+    s.strip_prefix('.').unwrap_or(s)
 }
 
-fn serialize_service<S>(rpc: &Rpc, url: &str, serializer: S) -> Result<S::Ok, S::Error>
+/// Helper serde serializer function the serialize a leaf of a service tree
+fn serialize_leaf<S>(rpc: &Rpc, url: &str, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
@@ -39,60 +71,118 @@ where
     [no_leading_dot(req), no_leading_dot(resp), url].serialize(serializer)
 }
 
-impl<'a> ServiceMapOrType<'a> {
-    fn unwrap_as_map(&mut self) -> &mut ServiceMap<'a> {
+impl<'a> ServiceMapNode<'a> {
+    /// Unwrap a node as a branch of theservice tree map.
+    /// This method will panicked if used on a leaf
+    fn unwrap_as_branch(&mut self) -> &mut ServiceTreeMap<'a> {
         match self {
-            Self::ServiceMap(v) => v,
-            Self::ServiceType { rpc: _, url: _ } => panic!("unexpected service type"),
+            Self::Branch(v) => v,
+            Self::Leaf { rpc: _, url: _ } => panic!("unexpected service type"),
         }
     }
 }
 
-pub fn build<'a>(src: &'a Cell<ServiceMap<'a>>, ns: &'a Namespace) {
+/// Create the service tree map with the given namespace
+pub fn create(ns: &Namespace) -> ServiceTreeMap<'_> {
+    let map = Cell::new(BTreeMap::new());
+    populate(&map, &ns);
+    map.take()
+}
+
+/// Recursively populate the service tree map with the given namespace
+fn populate<'a, 'b>(src: &'b Cell<ServiceTreeMap<'a>>, ns: &'a Namespace) {
     let mut map = src.take();
 
     for service in ns.services.values() {
         for (name, rpc) in service.methods.iter() {
             let (segments, last_segment, url) = match HTTPOptions::from(&rpc.md.options) {
-                Some(HTTPOptions { method, path, .. }) => {
-                    lazy_static! {
-                        static ref HTTP_REGEX: Regex = Regex::new("(<.*?:(.*?)>)").unwrap();
-                    }
-
-                    (
-                        path.split('/')
-                            .skip(1)
-                            .map(|path| match path.starts_with('<') {
-                                true => "*",
-                                false => path,
-                            })
-                            .collect::<Vec<_>>(),
-                        Cow::from(method.to_lowercase()),
-                        HTTP_REGEX.replace_all(path, ":$2"),
-                    )
-                }
-                None => (
-                    ns.path.iter().map(|v| v.as_str()).collect::<Vec<_>>(),
-                    Cow::from(name.as_str()),
-                    format!("/{}/{}", ns.path.join("."), name).into(),
+                Some(HTTPOptions { method, path, .. }) => (
+                    path.split('/')
+                        .skip(1)
+                        .map(|seg| match seg.starts_with(':') {
+                            true => Cow::from("*"),
+                            false => Cow::from(seg.to_string()),
+                        })
+                        .collect::<Vec<_>>(),
+                    Cow::from(method.to_lowercase()),
+                    path,
                 ),
+                None => {
+                    let segments = vec![Cow::from(ns.path.join(".")), name.into()];
+                    let url = format!("/{}", segments.join("/"));
+                    (segments, Cow::from("grpc"), Cow::from(url))
+                }
             };
 
             let mut ptr = &mut map;
 
             for path in segments {
                 ptr = ptr
-                    .entry(path.into())
-                    .or_insert(ServiceMapOrType::ServiceMap(BTreeMap::new()))
-                    .unwrap_as_map();
+                    .entry(path)
+                    .or_insert_with(|| ServiceMapNode::Branch(BTreeMap::new()))
+                    .unwrap_as_branch();
             }
 
-            ptr.insert(last_segment, ServiceMapOrType::ServiceType { rpc, url });
+            ptr.insert(last_segment, ServiceMapNode::Leaf { rpc, url });
         }
     }
 
     src.set(map);
     for child in ns.nested.values() {
-        build(src, child)
+        populate(src, child)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{parser::test_util::parse_test_file, service_map::no_leading_dot};
+    use indoc::indoc;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_no_leading_dot() {
+        assert_eq!(no_leading_dot(".pb.foo.Bar"), "pb.foo.Bar")
+    }
+
+    #[test]
+    fn test_generate_service_tree_map() {
+        let ns = parse_test_file(indoc! {r#"
+        package pb.hello;
+        
+        service HelloWorld {
+          rpc LotsOfGreetings(stream SayHelloRequest) returns (SayHelloResponse) {}
+          rpc SayHello (SayHelloRequest) returns (SayHelloResponse) { option (pgm.http.rule) = { GET: "/hello/<string:name>" }; }
+        }
+        
+        message SayHelloRequest {}        
+        message SayHelloResponse {}
+        "#});
+
+        let map = super::create(&ns);
+        let output = serde_json::to_string_pretty(&map).unwrap();
+
+        let result = indoc! {r#"
+          {
+            "hello": {
+              "*": {
+                "get": [
+                  "pb.hello.SayHelloRequest",
+                  "pb.hello.SayHelloResponse",
+                  "/hello/:name"
+                ]
+              }
+            },
+            "pb.hello": {
+              "LotsOfGreetings": {
+                "grpc": [
+                  "pb.hello.SayHelloRequest",
+                  "pb.hello.SayHelloResponse",
+                  "/pb.hello/LotsOfGreetings"
+                ]
+              }
+            }
+          }"#};
+
+        assert_eq!(output, result);
     }
 }

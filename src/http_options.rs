@@ -1,4 +1,8 @@
+use std::borrow::Cow;
+
 use crate::metadata::ProtoOption;
+use lazy_static::lazy_static;
+use regex::Regex;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct HTTPErrorType<'a> {
@@ -14,7 +18,7 @@ impl<'a> HTTPErrorType<'a> {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct HTTPOptions<'a> {
-    pub path: &'a str,
+    pub path: Cow<'a, str>,
     pub method: &'a str,
     pub error_types: Vec<HTTPErrorType<'a>>,
 }
@@ -76,6 +80,21 @@ impl<'a> HTTPOptions<'a> {
                 if let Some(default_error) = default_error {
                     error_types.push(default_error)
                 }
+
+                if error_types.is_empty() {
+                    error_types.push(HTTPErrorType {
+                        code: "number",
+                        type_name: "unknown",
+                    })
+                }
+
+                lazy_static! {
+                    // replace /api/<foo:string> => /api/:foo
+                    static ref HTTP_REGEX: Regex = Regex::new("(<.*?:(.*?)>)").unwrap();
+                }
+
+                // let path = HTTP_REGEX.replace_all(path, ":$2");
+                let path = HTTP_REGEX.replace_all(path, ":$2");
 
                 Some(HTTPOptions {
                     path,
@@ -141,7 +160,7 @@ mod tests {
         "#},
         HTTPOptions {
             method: "GET",
-            path: "/hello",
+            path: "/hello".into(),
             error_types: vec![
                 HTTPErrorType {
                     code: "404",
@@ -173,7 +192,7 @@ mod tests {
         "#},
         HTTPOptions {
             method: "GET",
-            path: "/hello",
+            path: "/hello".into(),
             error_types: vec![
                 HTTPErrorType {
                     code: "404",
@@ -184,6 +203,25 @@ mod tests {
                     type_name: "DefaultError",
                 },
             ]
+        }
+    );
+
+    test_http_options!(
+        test_dynamic_path,
+        indoc! {r#"
+        service HelloWorld {
+          rpc GetHello (SayHelloRequest) returns (SayHelloResponse) {
+              option (pgm.http.rule) = { GET: "/hello/<string:one>/<string:two>" };
+          }
+        }
+        "#},
+        HTTPOptions {
+            method: "GET",
+            path: "/hello/:one/:two".into(),
+            error_types: vec![HTTPErrorType {
+                code: "number",
+                type_name: "unknown",
+            },]
         }
     );
 

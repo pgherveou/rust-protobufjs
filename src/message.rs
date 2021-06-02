@@ -13,7 +13,8 @@ use linked_hash_map::LinkedHashMap;
 use serde::Serialize;
 
 /// Message defines a proto [message]
-/// [message] https://developers.google.com/protocol-buffers/docs/proto3#simple
+///
+/// [message]: https://developers.google.com/protocol-buffers/docs/proto3#simple
 #[derive(Debug, Serialize)]
 pub struct Message {
     /// A map of name => oneof
@@ -24,7 +25,8 @@ pub struct Message {
     pub fields: LinkedHashMap<String, Field>,
 
     /// A map of name => [nested] message or enum
-    /// [nested] https://developers.google.com/protocol-buffers/docs/proto3#nested
+    ///
+    /// [nested]: https://developers.google.com/protocol-buffers/docs/proto3#nested
     #[serde(skip_serializing_if = "LinkedHashMap::is_empty")]
     pub nested: LinkedHashMap<String, Type>,
 
@@ -116,11 +118,17 @@ impl Message {
             // e.g if the message is defined in One.OneInner, we first try to find it in OneInner, then One, ...
             for (index, (_, types)) in resolve_path.iter().rev().enumerate() {
                 if types.contains_path(type_path.clone()) {
-                    *type_name = resolve_path
+                    *type_name = dependencies[0]
+                        .path
                         .iter()
-                        .take(resolve_path.len() - index)
-                        .map(|(s, _)| *s)
-                        .chain(type_path)
+                        .map(|v| v.as_str())
+                        .chain(
+                            resolve_path
+                                .iter()
+                                .take(resolve_path.len() - index)
+                                .map(|(s, _)| *s)
+                                .chain(type_path),
+                        )
                         .collect::<Vec<_>>()
                         .to_path_string();
 

@@ -1,22 +1,24 @@
 [package]
-name = "protobuf"
+name = "prosecco"
 version = "0.1.0"
-authors = ["Pierre Guillaume Herveou <pgherveou@gmail.com>"]
+authors = ["Pierre Guillaume Herveou <pgherveou@lyft.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-thiserror = "1.0"
+thiserror = "1.0.25"
+globwalk = "0.8.1"
 convert_case = "0.4.0"
 regex = "1.5.4"
 lazy_static = "1.4.0"
 dirs = "3.0.2"
-serde = { version = "1.0.117", features = ["derive"] }
-serde_json = "1.0.59"
-glob = "0.3.0"
-linked-hash-map = {version = "0.5.4", features = ["serde_impl"]}
-derive_more = { version = "0.99.0",  default-features = false, features =["display"] }
-phf = { version = "0.7.24", features = ["macros"] }
+serde = { version = "1.0.126", features = ["derive"] }
+serde_json = "1.0.64"
+linked-hash-map = { version = "0.5.4", features = ["serde_impl"] }
+derive_more = { version = "0.99.14", default-features = false, features = ["display"] }
+phf = { version = "0.8.0", features = ["macros"] }
 indoc = "1.0.3"
+
+[dev-dependencies]
+pretty_assertions = "0.7.2"
+
 

@@ -70,7 +70,7 @@ pub trait IterExt: Iterator {
     {
         let mut src = self.clone();
 
-        // // get the first object segment
+        // get the first object segment
         if let Some(first_segment) = src.next() {
             // find the position of the first segment in the destination
             if dest.any(|segment| segment == first_segment) {

@@ -1,5 +1,6 @@
+use linked_hash_map::LinkedHashMap;
 use serde::Serialize;
-use std::{cell::RefCell, collections::HashMap};
+use std::cell::RefCell;
 
 use crate::metadata::Metadata;
 
@@ -10,11 +11,11 @@ fn is_false(value: &bool) -> bool {
 }
 
 /// Defines a rpc service
-/// [service] https://developers.google.com/protocol-buffers/docs/proto3#services
+/// [service]: https://developers.google.com/protocol-buffers/docs/proto3#services
 #[derive(Debug, Serialize)]
 pub struct Service {
     /// The list of rpc methods defined by this service
-    pub methods: HashMap<String, Rpc>,
+    pub methods: LinkedHashMap<String, Rpc>,
 
     /// metadata associated to the Enum
     #[serde(skip_serializing)]
@@ -30,14 +31,14 @@ impl Service {
     // Returns a new Service with the provided metadata
     pub fn new(md: Metadata) -> Self {
         Self {
-            methods: HashMap::new(),
+            methods: LinkedHashMap::new(),
             md,
         }
     }
 }
 
 /// Rpc defines a [rpc] method of a Service
-/// [rpc] https://developers.google.com/protocol-buffers/docs/proto3#services
+/// [rpc]: https://developers.google.com/protocol-buffers/docs/proto3#services
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Rpc {
