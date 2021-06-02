@@ -34,12 +34,18 @@
 //!     /**
 //!      * @link https://github.com/lyft/idl/blob/master/protos/pb/lyft/hello/hello_world.proto#6
 //!      */
-//!     grpc(path: '/pb.hello/LotsOfGreetings', handler: RouteHandler<Observable<pb.hello.SayHelloRequest>, pb.hello.SayHelloResponses, [code: number, body: string]>): void
+//!     grpc(
+//!       path: '/pb.hello/LotsOfGreetings',
+//!       handler: RouteHandler<Observable<pb.hello.SayHelloRequest>, pb.hello.SayHelloResponses, [code: number, body: string]>
+//!     ): void
 //!
 //!     /**
 //!      * @link https://github.com/lyft/idl/blob/master/protos/pb/lyft/hello/hello_world.proto#7
 //!      */
-//!     get(path: '/hello/<string:name>', handler: RouteHandler<pb.hello.SayHelloRequest, pb.hello.SayHelloResponse, [code: number, body: unknown]>): void
+//!     get(
+//!       path: '/hello/<string:name>',
+//!       handler: RouteHandler<pb.hello.SayHelloRequest, pb.hello.SayHelloResponse, [code: number, body: unknown]>
+//!     ): void
 //!   }
 //! }
 //!

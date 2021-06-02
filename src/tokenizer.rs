@@ -56,7 +56,7 @@ impl<I: Iterator<Item = char>> Tokenizer<I> {
             }};
         }
 
-        while let Some(char) = self.chars.next() {
+        for char in &mut self.chars {
             match (char, found_escape_char) {
                 ('n', true) => push_and_reset!('\n'),
                 ('r', true) => push_and_reset!('\r'),

@@ -8,6 +8,34 @@ use std::{
 };
 
 /// The parser parse files and populate the root namespace
+///
+/// # Example:
+///
+/// Basic usage:
+///
+/// ```no_run
+/// # use std::path::Path;
+/// # use prosecco::parser::Parser;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // root dir containing the proto files
+/// let root_dir = Path::new("protos");
+///
+/// // create a new parser
+/// let mut parser = Parser::new(root_dir);
+///
+/// // parse one or more files.
+/// // Imports will be resolved and parsed relatively to the root_dir
+/// parser.parse_file(Path::new("pb/hello/hello_world.json"))?;
+///
+/// // build the root namespace.
+/// let root = parser.build_root()?;
+///
+/// // generate descriptors
+/// let output = serde_json::to_string_pretty(&root).unwrap();
+/// std::fs::write(Path::new("descriptors.json"), output)?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct Parser {
     /// The root directory used to resolve import statements
     root_dir: PathBuf,
@@ -18,9 +46,9 @@ pub struct Parser {
 
 impl Parser {
     /// Returns a new parser with the given root directory and a list of files we want to ignore    
-    pub fn new(root_dir: PathBuf) -> Self {
+    pub fn new<T: Into<PathBuf>>(root_dir: T) -> Self {
         Self {
-            root_dir,
+            root_dir: root_dir.into(),
             parsed_files: HashMap::new(),
         }
     }
@@ -35,7 +63,9 @@ impl Parser {
 
     /// Parse the given file, and it's import dependencies
     /// The result will be merged into the root namespace of the parser
-    pub fn parse_file(&mut self, file_path: Rc<Path>) -> Result<(), ParseFileError> {
+    pub fn parse_file<T: Into<Rc<Path>>>(&mut self, file_path: T) -> Result<(), ParseFileError> {
+        let file_path = file_path.into();
+
         if self.parsed_files.contains_key(&file_path) {
             return Ok(());
         }
@@ -56,7 +86,7 @@ impl Parser {
 
         // get the list of imported files and parse them
         for import in ns.imports.iter() {
-            self.parse_file(import.as_path().into())?;
+            self.parse_file(import.as_path())?;
         }
 
         self.parsed_files.insert(file_path, ns);
